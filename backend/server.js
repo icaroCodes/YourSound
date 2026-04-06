@@ -26,6 +26,10 @@ app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (server-to-server, curl, Postman in dev)
     if (!origin) return callback(null, true);
+    // Allow Vercel preview environments dynamically
+    if (origin.endsWith('.vercel.app')) {
+      return callback(null, true);
+    }
     if (ALLOWED_ORIGINS.includes(origin)) {
       return callback(null, true);
     }
@@ -125,7 +129,12 @@ app.use((req, res) => {
 // Start
 // ──────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`[YourSound API] Rodando na porta ${PORT}`);
-  console.log(`[YourSound API] CORS permitido para: ${ALLOWED_ORIGINS.join(', ')}`);
-});
+
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`[YourSound API] Rodando na porta ${PORT}`);
+    console.log(`[YourSound API] CORS permitido para: ${ALLOWED_ORIGINS.join(', ')}`);
+  });
+}
+
+module.exports = app;
