@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  
+  --color-spotify-base: #000000;
+  --color-spotify-panel: #121212;
+  --color-spotify-panel-hover: #1f1f1f;
+  --color-spotify-highlight: #1a1a1a;
+  --color-spotify-green: #1ed760;
+  --color-spotify-green-hover: #1fdf64;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Base resets & utilities */
+body {
+  overflow-x: hidden;
+}
+
+.glass {
+  background: rgba(24, 24, 27, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}

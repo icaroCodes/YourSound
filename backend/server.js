@@ -1,0 +1,118 @@
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+require('dotenv').config();
+
+const app = express();
+
+// ──────────────────────────────────────────────
+// SECURITY: Helmet — sets secure HTTP headers
+// Protects against XSS, clickjacking, MIME sniffing, etc.
+// ──────────────────────────────────────────────
+app.use(helmet());
+
+// ──────────────────────────────────────────────
+// SECURITY: CORS — restrict to known origins ONLY
+// Never use cors() with no arguments in production.
+// ──────────────────────────────────────────────
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',   // Vite dev
+  'http://127.0.0.1:5173',
+  process.env.FRONTEND_URL   // Production URL (set in .env)
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (server-to-server, curl, Postman in dev)
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Bloqueado pela política CORS.'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// ──────────────────────────────────────────────
+// SECURITY: Rate Limiting — prevent brute force & abuse
+// ──────────────────────────────────────────────
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,  // 15 minutes
+  max: 200,                   // 200 requests per window per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Muitas requisições. Tente novamente em alguns minutos.' }
+});
+
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,                    // 10 uploads per 15 minutes
+  message: { error: 'Limite de uploads atingido. Aguarde 15 minutos.' }
+});
+
+app.use(globalLimiter);
+
+// ──────────────────────────────────────────────
+// Body parsing — with size limits
+// ──────────────────────────────────────────────
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+
+// ──────────────────────────────────────────────
+// Health check — no auth required
+// ──────────────────────────────────────────────
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', service: 'YourSound API', version: '2.0.0' });
+});
+
+// ──────────────────────────────────────────────
+// Routes — each file handles its own auth middleware
+// ──────────────────────────────────────────────
+const songsRoutes = require('./src/routes/songs');
+const playlistsRoutes = require('./src/routes/playlists');
+const likesRoutes = require('./src/routes/likes');
+const adminRoutes = require('./src/routes/admin');
+const usersRoutes = require('./src/routes/users');
+
+app.use('/api/songs', songsRoutes);
+app.use('/api/songs/upload', uploadLimiter); // Extra rate limit for uploads
+app.use('/api/playlists', playlistsRoutes);
+app.use('/api/likes', likesRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/users', usersRoutes);
+
+// ──────────────────────────────────────────────
+// Global error handler — never leak stack traces
+// ──────────────────────────────────────────────
+app.use((err, req, res, next) => {
+  console.error('[UNHANDLED ERROR]', err.message);
+  
+  // Multer file size error
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: 'Arquivo muito grande.' });
+  }
+  
+  // CORS error
+  if (err.message?.includes('CORS')) {
+    return res.status(403).json({ error: 'Origem não autorizada.' });
+  }
+
+  res.status(500).json({ error: 'Erro interno do servidor.' });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Rota não encontrada.' });
+});
+
+// ──────────────────────────────────────────────
+// Start
+// ──────────────────────────────────────────────
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`[YourSound API] Rodando na porta ${PORT}`);
+  console.log(`[YourSound API] CORS permitido para: ${ALLOWED_ORIGINS.join(', ')}`);
+});
