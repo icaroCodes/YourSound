@@ -1,13 +1,18 @@
-import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/useAuthStore'
 import { usePlayerStore } from '../store/usePlayerStore'
 import { api } from '../lib/api'
-import { Play, Pause, Shuffle, Download, UserPlus, MoreHorizontal, Clock, Search, Plus, Trash2, ListMusic, List, Heart } from 'lucide-react'
+import {
+  Play, Pause, Shuffle, UserPlus, MoreHorizontal,
+  Clock, Search, Plus, Trash2, ListMusic, List, Heart, Camera,
+  Pencil, X, Check
+} from 'lucide-react'
 import { useLikeStore } from '../store/useLikeStore'
 
 export default function PlaylistDetails() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const { user, userProfile } = useAuthStore()
   const { playSong, currentSong, isPlaying, togglePlay } = usePlayerStore()
   const { isLiked, toggleLike } = useLikeStore()
@@ -15,6 +20,7 @@ export default function PlaylistDetails() {
   const [playlist, setPlaylist] = useState(null)
   const [songs, setSongs] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
@@ -22,32 +28,121 @@ export default function PlaylistDetails() {
   const [showSearch, setShowSearch] = useState(false)
   const [hoveredRow, setHoveredRow] = useState(null)
 
+  const [uploadingCover, setUploadingCover] = useState(false)
+  const coverInputRef = useRef(null)
+
+  // Edit / Delete state
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [savingName, setSavingName] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const menuRef = useRef(null)
+  const editInputRef = useRef(null)
+
   useEffect(() => {
     fetchPlaylistData()
   }, [id])
 
+  // Close menu on outside click
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false)
+      }
+    }
+    if (menuOpen) document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [menuOpen])
+
+  // Focus edit input when editing name
+  useEffect(() => {
+    if (editingName) editInputRef.current?.focus()
+  }, [editingName])
+
   const fetchPlaylistData = async () => {
     try {
       setLoading(true)
+      setError(null)
       const data = await api.getPlaylist(id)
       setPlaylist(data.playlist)
       setSongs(data.songs)
     } catch (err) {
-      console.error("Erro ao carregar playlist:", err.message)
+      setError(err.message || 'Erro ao carregar playlist.')
     } finally {
       setLoading(false)
     }
   }
 
+  // ── Cover upload ──
+  const handleCoverClick = () => {
+    if (isOwner) coverInputRef.current?.click()
+  }
+
+  const handleCoverChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      setUploadingCover(true)
+      const data = await api.updatePlaylistCover(id, file)
+      setPlaylist(prev => ({ ...prev, cover_url: data.cover_url }))
+    } catch (err) {
+      console.error('Erro ao enviar capa:', err.message)
+    } finally {
+      setUploadingCover(false)
+      e.target.value = ''
+    }
+  }
+
+  // ── Edit name ──
+  const startEditingName = () => {
+    setEditName(playlist.name)
+    setEditingName(true)
+    setMenuOpen(false)
+  }
+
+  const savePlaylistName = async () => {
+    const trimmed = editName.trim()
+    if (!trimmed || trimmed === playlist.name) {
+      setEditingName(false)
+      return
+    }
+    try {
+      setSavingName(true)
+      const updated = await api.updatePlaylist(id, { name: trimmed })
+      setPlaylist(prev => ({ ...prev, name: updated.name }))
+      setEditingName(false)
+    } catch (err) {
+      console.error('Erro ao renomear:', err.message)
+    } finally {
+      setSavingName(false)
+    }
+  }
+
+  const handleNameKeyDown = (e) => {
+    if (e.key === 'Enter') savePlaylistName()
+    if (e.key === 'Escape') setEditingName(false)
+  }
+
+  // ── Delete playlist ──
+  const handleDeletePlaylist = async () => {
+    try {
+      setDeleting(true)
+      await api.deletePlaylist(id)
+      navigate('/playlists', { replace: true })
+    } catch (err) {
+      console.error('Erro ao excluir:', err.message)
+      setDeleting(false)
+      setShowDeleteConfirm(false)
+    }
+  }
+
+  // ── Search / Songs ──
   const handleSearch = async (e) => {
     const q = e.target.value
     setSearchQuery(q)
-
-    if (q.length < 2) {
-      setSearchResults([])
-      return
-    }
-
+    if (q.length < 2) { setSearchResults([]); return }
     setSearching(true)
     try {
       const data = await api.searchSongs(q)
@@ -63,10 +158,10 @@ export default function PlaylistDetails() {
   const addSongToPlaylist = async (song) => {
     try {
       const data = await api.addSongToPlaylist(id, song.id)
-      setSongs([{ ...song, playlist_song_id: data.id }, ...songs])
+      setSongs([{ ...song, playlist_song_id: data.id, added_at: new Date().toISOString() }, ...songs])
       setSearchResults(searchResults.filter(s => s.id !== song.id))
     } catch (err) {
-      console.error("Erro ao adicionar:", err.message)
+      console.error('Erro ao adicionar:', err.message)
     }
   }
 
@@ -80,23 +175,15 @@ export default function PlaylistDetails() {
   }
 
   const handlePlayAll = () => {
-    if (songs.length > 0) {
-      playSong(songs[0], songs)
-    }
-  }
-
-  const isCurrentlyPlaying = (song) => {
-    return currentSong?.id === song.id && isPlaying
+    if (songs.length > 0) playSong(songs[0], songs)
   }
 
   const handleRowClick = (song) => {
-    if (currentSong?.id === song.id) {
-      togglePlay()
-    } else {
-      playSong(song, songs)
-    }
+    if (currentSong?.id === song.id) togglePlay()
+    else playSong(song, songs)
   }
 
+  // ── Formatters ──
   const formatTime = (seconds) => {
     if (!seconds) return '--:--'
     const mins = Math.floor(seconds / 60)
@@ -104,56 +191,170 @@ export default function PlaylistDetails() {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`
   }
 
+  const formatAddedDate = (dateStr) => {
+    if (!dateStr) return '--'
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24))
+    if (diffDays === 0) return 'hoje'
+    if (diffDays === 1) return 'há 1 dia'
+    if (diffDays < 7) return `há ${diffDays} dias`
+    if (diffDays < 14) return 'há 1 semana'
+    if (diffDays < 30) return `há ${Math.floor(diffDays / 7)} semanas`
+    return date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
+
+  const totalDuration = songs.reduce((acc, s) => acc + (s.duration || 0), 0)
+  const formatTotalTime = (seconds) => {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = Math.floor(seconds % 60)
+    if (h > 0) return `${h}h ${m}min ${String(s).padStart(2, '0')}s`
+    return `${m}min ${String(s).padStart(2, '0')}s`
+  }
+
+  // ── Loading skeleton ──
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-zinc-400 text-sm">Carregando playlist...</div>
+      <div className="pb-8">
+        <div className="px-6 pt-12 pb-6 flex items-end gap-6" style={{ background: 'linear-gradient(to bottom, #2a2a2a 0%, #1a1a1a 50%, #121212 100%)' }}>
+          <div className="w-57.5 h-57.5 rounded skeleton shrink-0" />
+          <div className="flex flex-col gap-3 flex-1 pb-1">
+            <div className="h-3 w-20 skeleton" />
+            <div className="h-14 w-3/4 skeleton" />
+            <div className="h-4 w-48 skeleton mt-1" />
+          </div>
+        </div>
+        <div className="px-6 py-5 flex items-center gap-4">
+          <div className="w-14 h-14 rounded-full skeleton" />
+          <div className="w-8 h-8 rounded-full skeleton" />
+          <div className="w-8 h-8 rounded-full skeleton" />
+        </div>
+        <div className="px-6 space-y-1">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="flex items-center gap-4 px-4 py-2">
+              <div className="h-3 w-4 skeleton" />
+              <div className="w-10 h-10 rounded skeleton shrink-0" />
+              <div className="flex flex-col gap-1.5 flex-1">
+                <div className="h-3.5 w-32 skeleton" />
+                <div className="h-3 w-20 skeleton" />
+              </div>
+              <div className="h-3 w-24 skeleton hidden md:block" />
+              <div className="h-3 w-20 skeleton hidden lg:block" />
+              <div className="h-3 w-10 skeleton ml-auto" />
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
 
-  if (!playlist) {
+  // ── Error / Not Found ──
+  if (error || !playlist) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-zinc-400 text-sm">Playlist não encontrada.</div>
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <ListMusic size={40} className="text-zinc-600" />
+        <p className="text-zinc-400 text-sm">{error || 'Playlist não encontrada.'}</p>
+        <button onClick={fetchPlaylistData} className="text-white text-sm font-semibold hover:underline">
+          Tentar novamente
+        </button>
       </div>
     )
   }
 
   const isOwner = playlist.user_id === user?.id
   const username = userProfile?.email?.split('@')[0] || 'Usuário'
-  const coverUrl = songs.length > 0 ? songs[0].cover_url : null
+  const coverUrl = playlist.cover_url || (songs.length > 0 ? songs[0].cover_url : null)
 
   return (
     <div className="pb-8">
+      {/* Hidden file input for cover */}
+      <input
+        ref={coverInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={handleCoverChange}
+      />
+
       {/* ─── Gradient Header ─── */}
       <div
         className="px-6 pt-12 pb-6 flex items-end gap-6"
-        style={{
-          background: 'linear-gradient(to bottom, #5a4a28 0%, #3a3218 50%, #121212 100%)'
-        }}
+        style={{ background: 'linear-gradient(to bottom, #5a4a28 0%, #3a3218 50%, #121212 100%)' }}
       >
         {/* Cover Art */}
-        <div className="w-[230px] h-[230px] bg-zinc-800 rounded shadow-2xl shrink-0 overflow-hidden">
+        <div
+          className={`relative w-57.5 h-57.5 bg-zinc-800 rounded shadow-2xl shrink-0 overflow-hidden group ${isOwner ? 'cursor-pointer' : ''}`}
+          onClick={handleCoverClick}
+        >
           {coverUrl ? (
             <img src={coverUrl} alt={playlist.name} className="w-full h-full object-cover" />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-700 to-zinc-900">
+            <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-zinc-700 to-zinc-900">
               <ListMusic size={64} className="text-zinc-500" />
+            </div>
+          )}
+          {isOwner && (
+            <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              {uploadingCover ? (
+                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <Camera size={32} className="text-white" />
+                  <span className="text-white text-xs font-semibold">Escolher foto</span>
+                </>
+              )}
             </div>
           )}
         </div>
 
         {/* Info */}
         <div className="flex flex-col gap-2 min-w-0 pb-1">
-          <span className="text-xs font-medium uppercase tracking-wider">Playlist</span>
-          <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tight leading-none truncate">
-            {playlist.name}
-          </h1>
-          <div className="flex items-center gap-1 text-sm mt-2">
+          <span className="text-xs font-medium uppercase tracking-wider text-white/70">Playlist pública</span>
+
+          {/* Editable name */}
+          {editingName ? (
+            <div className="flex items-center gap-2">
+              <input
+                ref={editInputRef}
+                type="text"
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                onKeyDown={handleNameKeyDown}
+                maxLength={50}
+                className="text-5xl md:text-7xl font-extrabold text-white tracking-tight leading-none bg-transparent border-b-2 border-white/40 focus:border-white outline-none w-full min-w-0"
+              />
+              <button
+                onClick={savePlaylistName}
+                disabled={savingName}
+                className="p-2 text-spotify-green hover:scale-110 transition shrink-0"
+                title="Salvar"
+              >
+                {savingName
+                  ? <div className="w-5 h-5 border-2 border-spotify-green border-t-transparent rounded-full animate-spin" />
+                  : <Check size={24} />}
+              </button>
+              <button
+                onClick={() => setEditingName(false)}
+                className="p-2 text-zinc-400 hover:text-white transition shrink-0"
+                title="Cancelar"
+              >
+                <X size={24} />
+              </button>
+            </div>
+          ) : (
+            <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tight leading-none wrap-break-word">
+              {playlist.name}
+            </h1>
+          )}
+
+          <div className="flex items-center gap-1.5 text-sm mt-2 flex-wrap">
             <span className="font-bold text-white hover:underline cursor-pointer">{username}</span>
-            <span className="text-zinc-300">&bull;</span>
-            <span className="text-zinc-300">{songs.length} música{songs.length !== 1 ? 's' : ''}</span>
+            <span className="text-zinc-400">&bull;</span>
+            <span className="text-zinc-400">
+              {songs.length} música{songs.length !== 1 ? 's' : ''}
+              {totalDuration > 0 && `, ${formatTotalTime(totalDuration)}`}
+            </span>
           </div>
         </div>
       </div>
@@ -161,7 +362,7 @@ export default function PlaylistDetails() {
       {/* ─── Actions Bar ─── */}
       <div className="px-6 py-5 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          {/* Play Button */}
+          {/* Play */}
           <button
             onClick={handlePlayAll}
             disabled={songs.length === 0}
@@ -173,20 +374,73 @@ export default function PlaylistDetails() {
             <Shuffle size={22} />
           </button>
           <button className="text-zinc-400 hover:text-white transition p-2">
-            <Download size={22} />
-          </button>
-          <button className="text-zinc-400 hover:text-white transition p-2">
             <UserPlus size={22} />
           </button>
-          <button className="text-zinc-400 hover:text-white transition p-2">
-            <MoreHorizontal size={22} />
-          </button>
+
+          {/* ─── More Menu (Edit / Delete) ─── */}
+          {isOwner && (
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setMenuOpen(o => !o)}
+                className="text-zinc-400 hover:text-white transition p-2"
+              >
+                <MoreHorizontal size={22} />
+              </button>
+
+              {menuOpen && (
+                <div className="absolute left-0 top-10 z-50 w-56 bg-[#282828] rounded-lg shadow-2xl py-1 text-sm overflow-hidden">
+                  <button
+                    onClick={startEditingName}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/10 transition-colors text-left text-white"
+                  >
+                    <Pencil size={16} className="text-zinc-400" />
+                    Editar detalhes
+                  </button>
+                  <button
+                    onClick={() => { setShowDeleteConfirm(true); setMenuOpen(false) }}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/10 transition-colors text-left text-red-400"
+                  >
+                    <Trash2 size={16} />
+                    Excluir playlist
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 text-zinc-400">
           <span className="text-sm font-medium">Lista</span>
           <List size={18} />
         </div>
       </div>
+
+      {/* ─── Delete Confirmation Modal ─── */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/70" onClick={() => !deleting && setShowDeleteConfirm(false)}>
+          <div className="bg-[#282828] rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-white mb-2">Excluir playlist?</h3>
+            <p className="text-sm text-zinc-400 mb-6">
+              Tem certeza que deseja excluir <strong className="text-white">{playlist.name}</strong>? Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className="px-5 py-2.5 rounded-full text-sm font-semibold text-white hover:scale-105 transition disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeletePlaylist}
+                disabled={deleting}
+                className="px-5 py-2.5 bg-red-500 hover:bg-red-400 rounded-full text-sm font-bold text-white hover:scale-105 transition disabled:opacity-50"
+              >
+                {deleting ? 'Excluindo...' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── Song Table ─── */}
       <div className="px-6">
@@ -205,14 +459,13 @@ export default function PlaylistDetails() {
         ) : (
           <>
             {/* Table Header */}
-            <div className="grid grid-cols-[40px_1fr_1fr_40px_60px] items-center px-4 py-2 border-b border-white/10 text-zinc-400 text-xs uppercase tracking-wider font-medium mb-2">
+            <div className="grid grid-cols-[40px_2fr_1.5fr_1.2fr_40px_60px] items-center px-4 py-2 border-b border-white/10 text-zinc-400 text-xs uppercase tracking-wider font-medium mb-2">
               <span className="text-center">#</span>
               <span>Título</span>
-              <span className="hidden md:block">Artista</span>
+              <span className="hidden md:block">Álbum</span>
+              <span className="hidden lg:block">Adicionada em</span>
               <span></span>
-              <span className="flex justify-end">
-                <Clock size={14} />
-              </span>
+              <span className="flex justify-end"><Clock size={14} /></span>
             </div>
 
             {/* Song Rows */}
@@ -224,8 +477,8 @@ export default function PlaylistDetails() {
               return (
                 <div
                   key={song.playlist_song_id}
-                  className={`group grid grid-cols-[40px_1fr_1fr_40px_60px] items-center px-4 py-1.5 rounded-md transition-colors cursor-pointer ${
-                    isActive ? 'bg-white/[0.08]' : 'hover:bg-white/[0.06]'
+                  className={`group grid grid-cols-[40px_2fr_1.5fr_1.2fr_40px_60px] items-center px-4 py-1.5 rounded-md transition-colors cursor-pointer ${
+                    isActive ? 'bg-white/8' : 'hover:bg-white/6'
                   }`}
                   onMouseEnter={() => setHoveredRow(idx)}
                   onMouseLeave={() => setHoveredRow(null)}
@@ -234,23 +487,21 @@ export default function PlaylistDetails() {
                   {/* # / Play icon */}
                   <div className="flex items-center justify-center w-6 h-6">
                     {hovered ? (
-                      playing ? (
-                        <Pause size={14} fill="white" stroke="none" />
-                      ) : (
-                        <Play size={14} fill="white" stroke="none" className="ml-0.5" />
-                      )
+                      playing
+                        ? <Pause size={14} fill="white" stroke="none" />
+                        : <Play size={14} fill="white" stroke="none" className="ml-0.5" />
                     ) : isActive ? (
-                      <div className="flex items-end gap-[2px] h-3">
-                        <span className="w-[3px] bg-spotify-green rounded-full animate-pulse" style={{ height: '60%' }} />
-                        <span className="w-[3px] bg-spotify-green rounded-full animate-pulse" style={{ height: '100%', animationDelay: '0.15s' }} />
-                        <span className="w-[3px] bg-spotify-green rounded-full animate-pulse" style={{ height: '40%', animationDelay: '0.3s' }} />
+                      <div className="flex items-end gap-0.5 h-3">
+                        <span className="w-0.75 bg-spotify-green rounded-full animate-pulse" style={{ height: '60%' }} />
+                        <span className="w-0.75 bg-spotify-green rounded-full animate-pulse" style={{ height: '100%', animationDelay: '0.15s' }} />
+                        <span className="w-0.75 bg-spotify-green rounded-full animate-pulse" style={{ height: '40%', animationDelay: '0.3s' }} />
                       </div>
                     ) : (
                       <span className="text-sm text-zinc-400 font-medium">{idx + 1}</span>
                     )}
                   </div>
 
-                  {/* Title + Cover */}
+                  {/* Title + Cover + Artist */}
                   <div className="flex items-center gap-3 min-w-0 pr-4">
                     {song.cover_url ? (
                       <img src={song.cover_url} className="w-10 h-10 rounded object-cover shrink-0" alt="" />
@@ -261,13 +512,18 @@ export default function PlaylistDetails() {
                       <span className={`font-medium truncate text-sm ${isActive ? 'text-spotify-green' : 'text-white'}`}>
                         {song.title}
                       </span>
-                      <span className="text-xs text-zinc-400 truncate md:hidden">{song.artist}</span>
+                      <span className="text-xs text-zinc-400 truncate">{song.artist}</span>
                     </div>
                   </div>
 
-                  {/* Artist */}
+                  {/* Álbum */}
                   <span className="text-sm text-zinc-400 truncate hidden md:block hover:underline hover:text-white transition-colors">
-                    {song.artist}
+                    {song.album || song.title}
+                  </span>
+
+                  {/* Adicionada em */}
+                  <span className="text-sm text-zinc-400 truncate hidden lg:block">
+                    {formatAddedDate(song.added_at)}
                   </span>
 
                   {/* Like */}
@@ -275,8 +531,10 @@ export default function PlaylistDetails() {
                     <button
                       onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
                       className={`transition-all hover:scale-110 ${
-                        isLiked(song.id) ? 'text-spotify-green opacity-100' : 'text-zinc-400 hover:text-white opacity-0 group-hover:opacity-100'
-                      } ${isLiked(song.id) ? '!opacity-100' : ''}`}
+                        isLiked(song.id)
+                          ? 'text-spotify-green opacity-100'
+                          : 'text-zinc-400 hover:text-white opacity-0 group-hover:opacity-100'
+                      } ${isLiked(song.id) ? 'opacity-100!' : ''}`}
                     >
                       <Heart size={14} fill={isLiked(song.id) ? 'currentColor' : 'none'} />
                     </button>
@@ -334,8 +592,8 @@ export default function PlaylistDetails() {
                   type="text"
                   value={searchQuery}
                   onChange={handleSearch}
-                  placeholder="Pesquisar músicas"
-                  className="w-full pl-10 pr-4 py-2.5 bg-white/[0.07] border border-white/10 rounded text-white text-sm focus:outline-none focus:border-white/30 placeholder:text-zinc-500"
+                  placeholder="Pesquisar músicas ou artistas"
+                  className="w-full pl-10 pr-4 py-2.5 bg-white/7 border border-white/10 rounded text-white text-sm focus:outline-none focus:border-white/30 placeholder:text-zinc-500"
                 />
               </div>
 
@@ -347,7 +605,7 @@ export default function PlaylistDetails() {
                     <div className="py-4 text-center text-zinc-500 text-sm">Nenhum resultado encontrado.</div>
                   ) : (
                     searchResults.map(song => (
-                      <div key={song.id} className="flex items-center justify-between p-2 rounded hover:bg-white/[0.06] transition">
+                      <div key={song.id} className="flex items-center justify-between p-2 rounded hover:bg-white/6 transition">
                         <div className="flex items-center gap-3 min-w-0">
                           {song.cover_url ? (
                             <img src={song.cover_url} className="w-10 h-10 rounded object-cover shrink-0" alt="" />

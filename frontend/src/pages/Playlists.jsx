@@ -71,7 +71,15 @@ export default function Playlists() {
       </form>
 
       {loading ? (
-        <div className="text-zinc-400">Carregando...</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="p-5 bg-zinc-900/40 rounded-2xl border border-white/5 flex flex-col">
+              <div className="w-full aspect-video rounded-lg skeleton mb-4" />
+              <div className="h-5 w-3/4 skeleton mb-2" />
+              <div className="h-3 w-16 skeleton" />
+            </div>
+          ))}
+        </div>
       ) : playlists.length === 0 ? (
         <div className="text-zinc-500 py-10 px-4 border border-dashed border-white/10 rounded-2xl flex flex-col items-center gap-3">
           <ListMusic size={40} className="text-zinc-700" />

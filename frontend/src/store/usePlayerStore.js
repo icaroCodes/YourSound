@@ -4,7 +4,12 @@ export const usePlayerStore = create((set, get) => ({
   currentSong: null,
   queue: [],
   isPlaying: false,
-  volume: 1, // 0 to 1
+  volume: (() => {
+    try {
+      const saved = localStorage.getItem('ys_volume')
+      return saved !== null ? Number(saved) : 1
+    } catch { return 1 }
+  })(),
   
   playSong: (song, newQueue = null) => {
     set({ 
@@ -38,7 +43,10 @@ export const usePlayerStore = create((set, get) => ({
     }
   },
   
-  setVolume: (volume) => set({ volume }),
+  setVolume: (volume) => {
+    try { localStorage.setItem('ys_volume', volume) } catch {}
+    set({ volume })
+  },
   
   clearPlayer: () => {
     set({ currentSong: null, queue: [], isPlaying: false, progress: 0 })

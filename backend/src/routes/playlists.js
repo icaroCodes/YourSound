@@ -1,8 +1,14 @@
 const express = require('express');
+const multer = require('multer');
 const router = express.Router();
 const { supabase } = require('../config/supabase');
 const { verifyAuth } = require('../middleware/auth');
-const { sanitizeString, isValidUUID } = require('../middleware/validate');
+const { sanitizeString, isValidUUID, ALLOWED_IMAGE_MIMES, MAX_IMAGE_SIZE } = require('../middleware/validate');
+
+const coverUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_IMAGE_SIZE }
+});
 
 /**
  * GET /api/playlists
@@ -53,26 +59,42 @@ router.get('/:id', verifyAuth, async (req, res) => {
       return res.status(403).json({ error: 'Acesso negado a esta playlist.' });
     }
 
-    // Fetch songs in this playlist
-    const { data: psSongs, error: psErr } = await supabase
+    // Fetch playlist_songs entries (manual join — no FK dependency)
+    const { data: psEntries, error: psErr } = await supabase
       .from('playlist_songs')
-      .select(`id, songs (*)`)
+      .select('id, song_id, created_at')
       .eq('playlist_id', playlistId)
-      .order('created_at', { ascending: false });
+      .order('id', { ascending: false });
 
     if (psErr) throw psErr;
 
-    const songs = (psSongs || [])
-      .filter(ps => ps.songs != null)
-      .map(ps => ({
-        ...ps.songs,
-        playlist_song_id: ps.id
-      }));
+    const songIds = (psEntries || []).map(ps => ps.song_id).filter(Boolean);
+    let songs = [];
+
+    if (songIds.length > 0) {
+      const { data: songsData, error: songsErr } = await supabase
+        .from('songs')
+        .select('*')
+        .in('id', songIds);
+
+      if (songsErr) throw songsErr;
+
+      const songsMap = {};
+      (songsData || []).forEach(s => { songsMap[s.id] = s; });
+
+      songs = psEntries
+        .filter(ps => songsMap[ps.song_id])
+        .map(ps => ({
+          ...songsMap[ps.song_id],
+          playlist_song_id: ps.id,
+          added_at: ps.created_at
+        }));
+    }
 
     res.json({ playlist, songs });
   } catch (err) {
     console.error('[GET /playlists/:id]', err.message);
-    res.status(500).json({ error: 'Erro ao carregar playlist.' });
+    res.status(500).json({ error: `Erro ao carregar playlist: ${err.message}` });
   }
 });
 
@@ -100,6 +122,61 @@ router.post('/', verifyAuth, async (req, res) => {
   } catch (err) {
     console.error('[POST /playlists]', err.message);
     res.status(500).json({ error: 'Erro ao criar playlist.' });
+  }
+});
+
+/**
+ * PATCH /api/playlists/:id
+ * Updates playlist name and/or description.
+ * SECURITY: Validates ownership before update.
+ */
+router.patch('/:id', verifyAuth, async (req, res) => {
+  try {
+    const playlistId = req.params.id;
+    if (!isValidUUID(playlistId)) {
+      return res.status(400).json({ error: 'ID inválido.' });
+    }
+
+    const { data: existing, error: fetchErr } = await supabase
+      .from('playlists')
+      .select('user_id')
+      .eq('id', playlistId)
+      .single();
+
+    if (fetchErr || !existing) {
+      return res.status(404).json({ error: 'Playlist não encontrada.' });
+    }
+
+    if (existing.user_id !== req.userId) {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    const updates = {};
+    if (req.body.name !== undefined) {
+      const name = sanitizeString(req.body.name, 50);
+      if (!name) return res.status(400).json({ error: 'Nome não pode ser vazio.' });
+      updates.name = name;
+    }
+    if (req.body.description !== undefined) {
+      updates.description = sanitizeString(req.body.description, 200);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'Nenhum campo para atualizar.' });
+    }
+
+    const { data, error } = await supabase
+      .from('playlists')
+      .update(updates)
+      .eq('id', playlistId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error('[PATCH /playlists/:id]', err.message);
+    res.status(500).json({ error: 'Erro ao atualizar playlist.' });
   }
 });
 
@@ -253,5 +330,78 @@ router.delete('/:id/songs/:songEntryId', verifyAuth, async (req, res) => {
     res.status(500).json({ error: 'Erro ao remover música.' });
   }
 });
+
+/**
+ * PATCH /api/playlists/:id/cover
+ * Upload or replace a playlist's cover image.
+ * SECURITY: Validates ownership, file type, and file size.
+ */
+router.patch(
+  '/:id/cover',
+  verifyAuth,
+  coverUpload.single('cover'),
+  async (req, res) => {
+    try {
+      const playlistId = req.params.id;
+      if (!isValidUUID(playlistId)) {
+        return res.status(400).json({ error: 'ID de playlist inválido.' });
+      }
+
+      const { data: playlist, error: plErr } = await supabase
+        .from('playlists')
+        .select('user_id')
+        .eq('id', playlistId)
+        .single();
+
+      if (plErr || !playlist) {
+        return res.status(404).json({ error: 'Playlist não encontrada.' });
+      }
+
+      if (playlist.user_id !== req.userId) {
+        return res.status(403).json({ error: 'Acesso negado.' });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'Imagem de capa é obrigatória.' });
+      }
+
+      const coverFile = req.file;
+
+      if (!ALLOWED_IMAGE_MIMES.includes(coverFile.mimetype)) {
+        return res.status(400).json({ error: 'Tipo de imagem não permitido. Envie JPG, PNG, WebP ou GIF.' });
+      }
+
+      const cleanName = coverFile.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '');
+      const coverPath = `${req.userId}/${playlistId}_${Date.now()}_${cleanName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('playlist-covers')
+        .upload(coverPath, coverFile.buffer, {
+          contentType: coverFile.mimetype,
+          upsert: true
+        });
+
+      if (uploadError) throw new Error(uploadError.message);
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('playlist-covers')
+        .getPublicUrl(coverPath);
+
+      const { data: updated, error: updateError } = await supabase
+        .from('playlists')
+        .update({ cover_url: publicUrl })
+        .eq('id', playlistId)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      res.json({ cover_url: publicUrl, playlist: updated });
+    } catch (err) {
+      console.error('[PATCH /playlists/:id/cover]', err.message);
+      res.status(500).json({ error: 'Erro ao atualizar capa.' });
+    }
+  }
+);
 
 module.exports = router;

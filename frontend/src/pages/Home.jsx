@@ -30,7 +30,37 @@ export default function Home() {
   const recentSongs = songs.slice(0, 6)
   const recommendedSongs = songs.slice(6)
 
-  if (loading) return <div className="text-zinc-400 p-8">Carregando conteúdo...</div>
+  if (loading) return (
+    <div className="relative pb-10">
+      <div className="sticky top-0 z-10 bg-[#121212]/95 backdrop-blur-md px-6 py-3 flex items-center gap-2">
+        <div className="h-8 w-16 rounded-full skeleton" />
+        <div className="h-8 w-20 rounded-full skeleton" />
+        <div className="h-8 w-20 rounded-full skeleton" />
+      </div>
+      <div className="px-6 mt-4 space-y-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="flex items-center bg-white/[0.04] rounded overflow-hidden h-16">
+              <div className="w-16 h-16 skeleton shrink-0" style={{ borderRadius: 0 }} />
+              <div className="px-4 flex-1"><div className="h-3.5 w-3/4 skeleton" /></div>
+            </div>
+          ))}
+        </div>
+        <div>
+          <div className="h-7 w-52 skeleton mb-5" />
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="p-4 rounded-lg bg-white/[0.03] flex flex-col gap-3">
+                <div className="aspect-square rounded-md skeleton" />
+                <div className="h-4 w-3/4 skeleton" />
+                <div className="h-3 w-1/2 skeleton" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 
   return (
     <div className="relative pb-10">

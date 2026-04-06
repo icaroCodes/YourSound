@@ -14,10 +14,22 @@ export default function MainLayout() {
   const [leftWidth, setLeftWidth] = useState(300)
   const [rightWidth, setRightWidth] = useState(300)
   const [dragging, setDragging] = useState(null) // 'left' | 'right' | null
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const containerRef = useRef(null)
+
+  const toggleSidebar = () => {
+    if (isSidebarCollapsed) {
+      setIsSidebarCollapsed(false)
+      setLeftWidth(300)
+    } else {
+      setIsSidebarCollapsed(true)
+      setLeftWidth(72)
+    }
+  }
 
   const handleMouseDown = useCallback((side) => (e) => {
     e.preventDefault()
+    if (side === 'left' && isSidebarCollapsed) return
     setDragging(side)
 
     const startX = e.clientX
@@ -34,6 +46,9 @@ export default function MainLayout() {
       )
 
       if (side === 'left') {
+        if (newWidth <= MIN_SIDEBAR && delta < -20 && !isSidebarCollapsed) {
+          // Future enhancement: auto collapse on drag too far left
+        }
         setLeftWidth(newWidth)
       } else {
         setRightWidth(newWidth)
@@ -52,7 +67,7 @@ export default function MainLayout() {
     document.body.style.userSelect = 'none'
     document.addEventListener('mousemove', onMouseMove)
     document.addEventListener('mouseup', onMouseUp)
-  }, [leftWidth, rightWidth])
+  }, [leftWidth, rightWidth, isSidebarCollapsed])
 
   return (
     <div className="flex flex-col h-screen bg-spotify-base text-white overflow-hidden font-sans text-sm select-none">
@@ -60,19 +75,23 @@ export default function MainLayout() {
       <Navbar />
 
       {/* Content Area */}
-      <div ref={containerRef} className="flex flex-1 min-h-0 px-2 overflow-hidden">
+      <div ref={containerRef} className="flex flex-1 min-h-0 px-2 pb-2 overflow-hidden">
         {/* Left Sidebar */}
-        <div className="shrink-0 flex flex-col gap-0" style={{ width: leftWidth }}>
-          <Sidebar />
+        <div className="shrink-0 flex flex-col gap-0 transition-all duration-300 ease-in-out" style={{ width: leftWidth }}>
+          <Sidebar collapsed={isSidebarCollapsed} toggleSidebar={toggleSidebar} />
         </div>
 
-        {/* Left resize handle */}
-        <div
-          className="w-2 shrink-0 cursor-col-resize flex items-center justify-center group z-10"
-          onMouseDown={handleMouseDown('left')}
-        >
-          <div className={`w-[3px] h-8 rounded-full transition-colors ${dragging === 'left' ? 'bg-white/40' : 'bg-transparent group-hover:bg-white/20'}`} />
-        </div>
+        {/* Left resize handle / Spacing */}
+        {isSidebarCollapsed ? (
+          <div className="w-2 shrink-0 flex items-center justify-center z-10"></div>
+        ) : (
+          <div
+            className="w-2 shrink-0 cursor-col-resize flex items-center justify-center group z-10"
+            onMouseDown={handleMouseDown('left')}
+          >
+            <div className={`w-[3px] h-8 rounded-full transition-colors ${dragging === 'left' ? 'bg-white/40' : 'bg-transparent group-hover:bg-white/20'}`} />
+          </div>
+        )}
 
         {/* Center Content */}
         <main className="flex-1 bg-spotify-panel rounded-lg overflow-y-auto custom-scrollbar min-w-0">

@@ -1,51 +1,158 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { usePlayerStore } from '../store/usePlayerStore'
 import { useLikeStore } from '../store/useLikeStore'
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Shuffle, Repeat, Mic2, ListMusic, MonitorSpeaker, Maximize2, Heart, PictureInPicture2 } from 'lucide-react'
 
 export default function Player() {
-  const { currentSong, isPlaying, togglePlay, next, previous, volume, setVolume } = usePlayerStore()
+  const { currentSong, isPlaying, togglePlay, next, previous, volume, setVolume, queue, playSong } = usePlayerStore()
   const { isLiked, toggleLike } = useLikeStore()
   const audioRef = useRef(null)
+  const fadeInterval = useRef(null)
+  
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [isSeeking, setIsSeeking] = useState(false)
+  const [pipWindow, setPipWindow] = useState(null)
+  const [showQueuePopover, setShowQueuePopover] = useState(false)
 
+  const currentIndex = queue?.findIndex(s => s.id === currentSong?.id) ?? -1
+  const nextSongs = currentIndex >= 0 && queue ? queue.slice(currentIndex + 1, currentIndex + 11) : []
+
+  // --- Handlers para Reprodução com Fade (Suavidade) ---
   useEffect(() => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.play().catch(e => console.error("Playback error:", e))
+    const audio = audioRef.current
+    if (!audio) return
+
+    // Limpar qualquer fade out que ainda esteja ocorrendo
+    if (fadeInterval.current) {
+      clearInterval(fadeInterval.current)
+      fadeInterval.current = null
+    }
+
+    if (isPlaying) {
+      // Define volume logarítimico (Math.pow(2)) para soar natural e evitar o efeito estrondoso
+      audio.volume = Math.pow(volume, 2)
+      audio.play().catch(e => console.error("Playback error:", e))
+    } else {
+      // Fade out suave - 250ms de decaimento
+      const fadeStep = audio.volume / 15
+      
+      if (audio.volume > 0.01) {
+        fadeInterval.current = setInterval(() => {
+          if (audio) {
+            let nextVol = audio.volume - fadeStep
+            if (nextVol <= 0.01) {
+              clearInterval(fadeInterval.current)
+              audio.pause()
+            } else {
+              audio.volume = nextVol
+            }
+          }
+        }, 15)
       } else {
-        audioRef.current.pause()
+        audio.pause()
       }
     }
-  }, [isPlaying, currentSong])
 
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = volume
+    return () => {
+      if (fadeInterval.current) clearInterval(fadeInterval.current)
     }
-  }, [volume])
+  }, [isPlaying, currentSong]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Atualiza o volume naturalmente durante a reprodução
+  useEffect(() => {
+    if (audioRef.current && isPlaying) {
+      audioRef.current.volume = Math.pow(volume, 2)
+    }
+  }, [volume, isPlaying])
 
   const handleTimeUpdate = () => {
-    if (audioRef.current) {
+    // Apenas atualiza a barra recarregando se não estivermos arrastando o mouse
+    if (audioRef.current && !isSeeking) {
       setProgress(audioRef.current.currentTime)
       setDuration(audioRef.current.duration)
     }
   }
 
-  const handleSeek = (e) => {
+  const handleSeekChange = (e) => {
+    // Muda visualmente o progress, evitando modificar o source de áudio imediatamente para barrar ruídos e repetições brutas 
+    setProgress(Number(e.target.value))
+  }
+
+  const handleSeekCommit = (e) => {
     const newTime = Number(e.target.value)
     if (audioRef.current) {
       audioRef.current.currentTime = newTime
       setProgress(newTime)
     }
+    setIsSeeking(false)
   }
-
   const formatTime = (time) => {
     if (!time || isNaN(time)) return "0:00"
     const mins = Math.floor(time / 60)
     const secs = Math.floor(time % 60)
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`
+  }
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`)
+      })
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen()
+      }
+    }
+  }
+
+  const togglePiP = async () => {
+    if (pipWindow) {
+      pipWindow.close()
+      return
+    }
+
+    if (!('documentPictureInPicture' in window)) {
+      alert('Seu navegador não suporta a API de Picture-in-Picture para documentos.')
+      return
+    }
+
+    try {
+      const pip = await window.documentPictureInPicture.requestWindow({
+        width: 320,
+        height: 380,
+      })
+      
+      // Copiar todos os estilos (Tailwind) para a janela PiP
+      ;[...document.styleSheets].forEach((styleSheet) => {
+        try {
+          const cssRules = [...styleSheet.cssRules].map((r) => r.cssText).join('')
+          const style = document.createElement('style')
+          style.textContent = cssRules
+          pip.document.head.appendChild(style)
+        } catch (e) {
+          const link = document.createElement('link')
+          link.rel = 'stylesheet'
+          link.type = styleSheet.type
+          link.media = styleSheet.media
+          link.href = styleSheet.href
+          pip.document.head.appendChild(link)
+        }
+      })
+
+      // Resetar margins/bg da nova janela
+      pip.document.body.style.margin = '0'
+      pip.document.body.style.backgroundColor = '#121212'
+
+      pip.addEventListener('pagehide', () => {
+        setPipWindow(null)
+      })
+
+      setPipWindow(pip)
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   /* ─── Empty State ─── */
@@ -89,7 +196,7 @@ export default function Player() {
               <div className="w-full h-1 bg-zinc-600 rounded-full" />
             </div>
           </div>
-          <Maximize2 size={16} className="hidden lg:block" />
+          <Maximize2 size={16} className="hidden lg:block cursor-pointer hover:text-white transition" onClick={toggleFullscreen} />
         </div>
       </div>
     )
@@ -150,7 +257,9 @@ export default function Player() {
               min="0"
               max={duration || 100}
               value={progress}
-              onChange={handleSeek}
+              onPointerDown={() => setIsSeeking(true)}
+              onChange={handleSeekChange}
+              onPointerUp={handleSeekCommit}
               className="absolute w-full h-1 opacity-0 cursor-pointer z-10"
             />
             <div className="w-full h-1 bg-zinc-600 rounded-full overflow-hidden absolute pointer-events-none group-hover:h-1.5 transition-all">
@@ -169,10 +278,52 @@ export default function Player() {
       </div>
 
       {/* Right: Volume + Extras */}
-      <div className="w-[30%] min-w-[180px] flex items-center justify-end gap-3 text-zinc-400">
+      <div className="w-[30%] min-w-[180px] flex items-center justify-end gap-3 text-zinc-400 relative">
         <button className="hover:text-white transition hidden md:block"><Mic2 size={16} /></button>
-        <button className="hover:text-white transition hidden md:block"><ListMusic size={16} /></button>
+        <button 
+          onClick={() => setShowQueuePopover(!showQueuePopover)}
+          className={`transition hidden md:block ${showQueuePopover ? 'text-spotify-green' : 'hover:text-white'}`}
+          title="Fila"
+        >
+          <ListMusic size={16} />
+        </button>
         <button className="hover:text-white transition hidden md:block"><MonitorSpeaker size={16} /></button>
+
+        {/* --- Queue Popover --- */}
+        {showQueuePopover && (
+          <>
+            <div className="fixed inset-0 z-40 cursor-default" onClick={() => setShowQueuePopover(false)} />
+            <div className="absolute bottom-[calc(100%+20px)] right-16 w-[340px] max-h-[450px] bg-[#282828] rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.5)] flex flex-col z-50 overflow-hidden border border-white/10">
+              <div className="p-4 bg-[#282828] shrink-0 border-b border-white/5">
+                <h3 className="text-white font-bold text-lg">A seguir</h3>
+              </div>
+              <div className="p-2 overflow-y-auto custom-scrollbar flex-1 flex flex-col gap-1">
+                {nextSongs.length === 0 ? (
+                  <div className="text-zinc-400 text-sm p-4 text-center">Não há músicas na fila.</div>
+                ) : (
+                  nextSongs.map((song, i) => (
+                    <div key={`${song.id}-${i}`} className="flex items-center gap-3 p-2 rounded-md hover:bg-white/10 transition-colors group cursor-pointer" onClick={() => { playSong(song, queue); setShowQueuePopover(false); }}>
+                      <div className="w-10 h-10 rounded overflow-hidden shrink-0 bg-zinc-800 flex items-center justify-center relative">
+                        {song.cover_url ? (
+                          <img src={song.cover_url} className="w-full h-full object-cover" alt="" />
+                        ) : (
+                          <span className="text-zinc-500 text-xs">&#9835;</span>
+                        )}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                          <Play size={16} fill="white" className="text-white ml-0.5" />
+                        </div>
+                      </div>
+                      <div className="flex flex-col min-w-0 pr-2">
+                        <span className="text-sm font-medium text-white truncate">{song.title}</span>
+                        <span className="text-xs text-zinc-400 truncate">{song.artist}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </>
+        )}
 
         <div className="flex items-center gap-2 w-[100px] group relative h-4">
           <button onClick={() => setVolume(volume === 0 ? 1 : 0)} className="hover:text-white transition z-20">
@@ -195,9 +346,54 @@ export default function Player() {
           </div>
         </div>
 
-        <button className="hover:text-white transition hidden lg:block"><PictureInPicture2 size={16} /></button>
-        <button className="hover:text-white transition hidden lg:block"><Maximize2 size={16} /></button>
+        <button onClick={togglePiP} title="Mini Player" className={`transition hidden lg:block ${pipWindow ? 'text-spotify-green' : 'hover:text-white'}`}>
+          <PictureInPicture2 size={16} />
+        </button>
+        <button onClick={toggleFullscreen} className="hover:text-white transition hidden lg:block"><Maximize2 size={16} /></button>
       </div>
+
+      {/* ─── PiP Portal ─── */}
+      {pipWindow && createPortal(
+        <div className="w-full h-screen flex flex-col p-5 bg-[#121212] overflow-hidden text-white select-none">
+          {/* Cover */}
+          <div className="flex-1 w-full min-h-0 mb-6 flex items-center justify-center">
+            {currentSong.cover_url ? (
+              <img src={currentSong.cover_url} className="w-full h-full max-w-[400px] object-cover rounded-xl shadow-2xl" alt="" />
+            ) : (
+              <div className="w-full h-full max-w-[400px] bg-zinc-800 rounded-xl flex items-center justify-center shadow-2xl">
+                <span className="text-zinc-500 text-6xl">&#9835;</span>
+              </div>
+            )}
+          </div>
+          
+          {/* Info & Like */}
+          <div className="flex flex-col shrink-0 mb-5 px-1">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col min-w-0">
+                <h3 className="font-bold text-[22px] truncate hover:underline cursor-pointer tracking-tight leading-tight mb-1">{currentSong.title}</h3>
+                <p className="text-zinc-400 text-[15px] truncate hover:underline cursor-pointer hover:text-white transition-colors">{currentSong.artist}</p>
+              </div>
+              <button onClick={() => toggleLike(currentSong)} className={`shrink-0 hover:scale-110 transition-transform ${isLiked(currentSong.id) ? 'text-spotify-green' : 'text-zinc-400 hover:text-white'}`}>
+                <Heart size={26} fill={isLiked(currentSong.id) ? 'currentColor' : 'none'} />
+              </button>
+            </div>
+          </div>
+
+          {/* Controls */}
+          <div className="flex items-center justify-center gap-7 shrink-0 pb-4">
+            <button onClick={previous} className="text-zinc-400 hover:text-white transition">
+              <SkipBack size={26} fill="currentColor" />
+            </button>
+            <button onClick={togglePlay} className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-lg">
+              {isPlaying ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" className="ml-1" />}
+            </button>
+            <button onClick={next} className="text-zinc-400 hover:text-white transition">
+              <SkipForward size={26} fill="currentColor" />
+            </button>
+          </div>
+        </div>,
+        pipWindow.document.body
+      )}
     </div>
   )
 }

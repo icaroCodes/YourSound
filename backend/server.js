@@ -57,9 +57,21 @@ app.use(globalLimiter);
 
 // ──────────────────────────────────────────────
 // Body parsing — with size limits
+// IMPORTANT: These parsers only handle JSON and url-encoded bodies.
+// Multipart/form-data (file uploads) is handled exclusively by Multer
+// inside the songs route. We must NOT let these parsers interfere
+// with multipart requests, so we skip them for the upload path.
 // ──────────────────────────────────────────────
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+const skipUploadPaths = (middleware) => (req, res, next) => {
+  // Let multer handle multipart requests — don't parse them here
+  if (req.headers['content-type']?.includes('multipart/form-data')) {
+    return next();
+  }
+  return middleware(req, res, next);
+};
+
+app.use(skipUploadPaths(express.json({ limit: '1mb' })));
+app.use(skipUploadPaths(express.urlencoded({ extended: false, limit: '1mb' })));
 
 // ──────────────────────────────────────────────
 // Health check — no auth required
@@ -77,8 +89,9 @@ const likesRoutes = require('./src/routes/likes');
 const adminRoutes = require('./src/routes/admin');
 const usersRoutes = require('./src/routes/users');
 
+// Upload rate limiter must come BEFORE the songs route to apply correctly
+app.use('/api/songs/upload', uploadLimiter);
 app.use('/api/songs', songsRoutes);
-app.use('/api/songs/upload', uploadLimiter); // Extra rate limit for uploads
 app.use('/api/playlists', playlistsRoutes);
 app.use('/api/likes', likesRoutes);
 app.use('/api/admin', adminRoutes);

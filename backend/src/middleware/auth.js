@@ -27,21 +27,28 @@ const verifyAuth = async (req, res, next) => {
       return res.status(401).json({ error: 'Sessão expirada ou inválida.' });
     }
 
-    // Fetch role from our controlled public.users table
-    const { data: profile, error: profileError } = await supabase
+    // Fetch role from our controlled public.users table.
+    // If the row is missing (e.g. trigger not yet configured), we upsert it now
+    // so the user is never permanently locked out.
+    let { data: profile } = await supabase
       .from('users')
       .select('id, role, email')
       .eq('id', user.id)
       .single();
 
-    if (profileError || !profile) {
-      return res.status(403).json({ error: 'Perfil de usuário não encontrado.' });
+    if (!profile) {
+      const { data: inserted } = await supabase
+        .from('users')
+        .upsert({ id: user.id, email: user.email, role: 'user' }, { onConflict: 'id' })
+        .select('id, role, email')
+        .single();
+      profile = inserted;
     }
 
     // Attach validated data to the request — these are SERVER-verified, not from the client
     req.user = user;
     req.userId = user.id;
-    req.userRole = profile.role || 'user';
+    req.userRole = profile?.role || 'user';
     
     next();
   } catch (err) {

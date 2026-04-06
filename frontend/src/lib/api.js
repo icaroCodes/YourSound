@@ -87,6 +87,28 @@ export const api = {
     return handleResponse(res);
   },
 
+  async updatePlaylist(playlistId, fields) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/playlists/${playlistId}`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields)
+    });
+    return handleResponse(res);
+  },
+
+  async updatePlaylistCover(playlistId, imageFile) {
+    const headers = await getAuthHeaders();
+    const formData = new FormData();
+    formData.append('cover', imageFile);
+    const res = await fetch(`${API_BASE}/api/playlists/${playlistId}/cover`, {
+      method: 'PATCH',
+      headers,
+      body: formData
+    });
+    return handleResponse(res);
+  },
+
   async deletePlaylist(id) {
     const headers = await getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/playlists/${id}`, {
