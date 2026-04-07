@@ -4,10 +4,5 @@
     { "source": "/assets/(.*)", "destination": "frontend/dist/assets/$1" },
     { "source": "/yoursound.svg", "destination": "frontend/dist/yoursound.svg" },
     { "source": "/(.*)", "destination": "frontend/dist/index.html" }
-  ],
-  "functions": {
-    "backend/server.js": {
-      "runtime": "nodejs20.x"
-    }
-  }
+  ]
 }
