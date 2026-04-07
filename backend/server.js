@@ -132,23 +132,23 @@ app.use((req, res) => {
 });
 
 // ──────────────────────────────────────────────
-// HTTP server + Socket.io
+// Start — Vercel vs Railway/local
 // ──────────────────────────────────────────────
-const server = http.createServer(app);
-const io = initSocket(server);
+if (process.env.VERCEL === '1') {
+  // Vercel serverless: no listen(), no Socket.io (WebSockets not supported).
+  // Vercel imports the Express app directly.
+  module.exports = app;
+} else {
+  // Railway / local: real HTTP server + Socket.io
+  const server = http.createServer(app);
+  const io = initSocket(server);
+  app.set('io', io);
 
-// Make io available inside routes:  req.app.get('io')
-app.set('io', io);
+  const PORT = process.env.PORT || 3001;
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`[YourSound API] Rodando na porta ${PORT}`);
+    console.log(`[YourSound API] CORS permitido para: ${ALLOWED_ORIGINS.join(', ')}`);
+  });
 
-// ──────────────────────────────────────────────
-// Start
-// ──────────────────────────────────────────────
-const PORT = process.env.PORT || 3001;
-
-// Bind to 0.0.0.0 — required for Railway (and any containerized environment)
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[YourSound API] Rodando na porta ${PORT}`);
-  console.log(`[YourSound API] CORS permitido para: ${ALLOWED_ORIGINS.join(', ')}`);
-});
-
-module.exports = { app, server, io };
+  module.exports = { app, server, io };
+}
