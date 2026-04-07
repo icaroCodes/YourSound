@@ -1,8 +1,7 @@
 {
+  "outputDirectory": "frontend/dist",
   "rewrites": [
     { "source": "/_/backend/(.*)", "destination": "backend/server.js" },
-    { "source": "/assets/(.*)", "destination": "frontend/dist/assets/$1" },
-    { "source": "/yoursound.svg", "destination": "frontend/dist/yoursound.svg" },
-    { "source": "/(.*)", "destination": "frontend/dist/index.html" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
