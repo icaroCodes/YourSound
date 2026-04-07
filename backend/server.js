@@ -1,7 +1,9 @@
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { initSocket } = require('./src/sockets');
 require('dotenv').config();
 
 const app = express();
@@ -126,15 +128,22 @@ app.use((req, res) => {
 });
 
 // ──────────────────────────────────────────────
+// HTTP server + Socket.io
+// ──────────────────────────────────────────────
+const server = http.createServer(app);
+const io = initSocket(server);
+
+// Make io available inside routes:  req.app.get('io')
+app.set('io', io);
+
+// ──────────────────────────────────────────────
 // Start
 // ──────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
 
-if (process.env.VERCEL !== '1') {
-  app.listen(PORT, () => {
-    console.log(`[YourSound API] Rodando na porta ${PORT}`);
-    console.log(`[YourSound API] CORS permitido para: ${ALLOWED_ORIGINS.join(', ')}`);
-  });
-}
+server.listen(PORT, () => {
+  console.log(`[YourSound API] Rodando na porta ${PORT}`);
+  console.log(`[YourSound API] CORS permitido para: ${ALLOWED_ORIGINS.join(', ')}`);
+});
 
-module.exports = app;
+module.exports = { app, server, io };
