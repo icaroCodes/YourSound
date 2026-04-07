@@ -1,10 +1,12 @@
+// MUST be first — loads .env before ANY other require reads process.env
+require('dotenv').config();
+
 const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { initSocket } = require('./src/sockets');
-require('dotenv').config();
 
 const app = express();
 
@@ -12,7 +14,9 @@ const app = express();
 // SECURITY: Helmet — sets secure HTTP headers
 // Protects against XSS, clickjacking, MIME sniffing, etc.
 // ──────────────────────────────────────────────
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 
 // ──────────────────────────────────────────────
 // SECURITY: CORS — restrict to known origins ONLY
@@ -141,7 +145,8 @@ app.set('io', io);
 // ──────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
 
-server.listen(PORT, () => {
+// Bind to 0.0.0.0 — required for Railway (and any containerized environment)
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`[YourSound API] Rodando na porta ${PORT}`);
   console.log(`[YourSound API] CORS permitido para: ${ALLOWED_ORIGINS.join(', ')}`);
 });
