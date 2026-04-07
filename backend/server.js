@@ -16,8 +16,8 @@ const rateLimit = require('express-rate-limit');
 process.on('uncaughtException', (err) => {
   console.error('[FATAL] Uncaught Exception:', err.message);
   console.error(err.stack);
-  // Give time for logs to flush before exiting
-  setTimeout(() => process.exit(1), 1000);
+  // Do NOT process.exit() — Railway will lose the container and return 502.
+  // The server should keep running so it can serve other requests.
 });
 
 process.on('unhandledRejection', (reason) => {
@@ -243,6 +243,11 @@ if (process.env.VERCEL === '1') {
       console.error(`[SERVER ERROR] Port ${PORT} already in use.`);
     }
   });
+
+  // Keep-alive log — helps diagnose if the process is dying silently
+  setInterval(() => {
+    console.log(`[HEARTBEAT] alive — uptime ${Math.floor(process.uptime())}s — ${new Date().toISOString()}`);
+  }, 60000);
 
   module.exports = { app, server, io };
 }
