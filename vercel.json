@@ -1,7 +1,7 @@
 {
   "outputDirectory": "frontend/dist",
   "rewrites": [
-    { "source": "/_/backend/(.*)", "destination": "backend/server.js" },
+    { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

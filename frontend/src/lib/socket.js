@@ -1,7 +1,7 @@
 import { io } from 'socket.io-client';
 
-// URL do backend no Railway (configure VITE_API_URL no Vercel)
-const BACKEND_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/_/backend' : 'http://localhost:3001');
+// URL do backend (Railway ou Vercel fallback)
+const BACKEND_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3001');
 
 /** Singleton da conexão socket. Null enquanto desconectado. */
 let socket = null;

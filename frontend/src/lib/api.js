@@ -1,9 +1,8 @@
 import { supabase } from './supabase';
 
-// Dev: '' (requests go through Vite proxy → localhost:3001, zero CORS issues)
-// Prod Vercel: '/_/backend' (monorepo route)
-// Prod Railway: set VITE_API_URL in Vercel dashboard
-const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/_/backend' : '');
+// Dev: '' (requests go through Vite proxy → localhost:3001)
+// Prod Vercel: '/api' (mapped to serverless function)
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : '');
 
 /**
  * Centralized API client.
