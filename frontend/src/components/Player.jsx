@@ -2,19 +2,21 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { usePlayerStore } from '../store/usePlayerStore'
 import { useLikeStore } from '../store/useLikeStore'
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Shuffle, Repeat, Mic2, ListMusic, MonitorSpeaker, Maximize2, Heart, PictureInPicture2 } from 'lucide-react'
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Shuffle, Repeat, Mic2, ListMusic, MonitorSpeaker, Maximize2, Heart, PictureInPicture2, X } from 'lucide-react'
 
 export default function Player() {
-  const { currentSong, isPlaying, togglePlay, next, previous, volume, setVolume, queue, playSong } = usePlayerStore()
+  const { currentSong, isPlaying, togglePlay, next, previous, volume, setVolume, queue, playSong, isQueueOpen, toggleQueue } = usePlayerStore()
   const { isLiked, toggleLike } = useLikeStore()
   const audioRef = useRef(null)
   const fadeInterval = useRef(null)
-  
+  const isInitialLoadRef = useRef(true)
+  const lastSavedTimeRef = useRef(-1)
+
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
   const [isSeeking, setIsSeeking] = useState(false)
   const [pipWindow, setPipWindow] = useState(null)
-  const [showQueuePopover, setShowQueuePopover] = useState(false)
+  const [previousVolume, setPreviousVolume] = useState(1)
 
   const currentIndex = queue?.findIndex(s => s.id === currentSong?.id) ?? -1
   const nextSongs = currentIndex >= 0 && queue ? queue.slice(currentIndex + 1, currentIndex + 11) : []
@@ -67,11 +69,35 @@ export default function Player() {
     }
   }, [volume, isPlaying])
 
+  const handleLoadedData = () => {
+    if (audioRef.current) {
+      setDuration(audioRef.current.duration)
+    }
+    if (isInitialLoadRef.current) {
+      isInitialLoadRef.current = false
+      try {
+        const savedTime = localStorage.getItem('ys_current_time')
+        if (savedTime && audioRef.current) {
+          const t = Number(savedTime)
+          audioRef.current.currentTime = t
+          setProgress(t)
+        }
+      } catch {}
+    }
+  }
+
   const handleTimeUpdate = () => {
     // Apenas atualiza a barra recarregando se não estivermos arrastando o mouse
     if (audioRef.current && !isSeeking) {
-      setProgress(audioRef.current.currentTime)
+      const t = audioRef.current.currentTime
+      setProgress(t)
       setDuration(audioRef.current.duration)
+      // Salva o tempo a cada segundo inteiro
+      const intT = Math.floor(t)
+      if (intT !== lastSavedTimeRef.current) {
+        lastSavedTimeRef.current = intT
+        try { localStorage.setItem('ys_current_time', String(t)) } catch {}
+      }
     }
   }
 
@@ -171,13 +197,11 @@ export default function Player() {
 
         <div className="w-[40%] max-w-[722px] flex flex-col items-center gap-1">
           <div className="flex items-center gap-6 opacity-40 pointer-events-none">
-            <button className="text-zinc-400"><Shuffle size={16} /></button>
             <button className="text-zinc-400"><SkipBack size={18} fill="currentColor" /></button>
             <button className="w-8 h-8 flex items-center justify-center bg-white text-black rounded-full">
-              <Play size={16} fill="currentColor" className="ml-0.5" />
+               <Play size={16} fill="currentColor" className="ml-0.5" />
             </button>
             <button className="text-zinc-400"><SkipForward size={18} fill="currentColor" /></button>
-            <button className="text-zinc-400"><Repeat size={16} /></button>
           </div>
           <div className="w-full flex items-center gap-2 text-[11px] text-zinc-500 font-medium">
             <span className="w-8 text-right">0:00</span>
@@ -208,6 +232,7 @@ export default function Player() {
       <audio
         ref={audioRef}
         src={currentSong.file_url}
+        onLoadedData={handleLoadedData}
         onTimeUpdate={handleTimeUpdate}
         onEnded={next}
         autoPlay={isPlaying}
@@ -237,7 +262,6 @@ export default function Player() {
       {/* Center: Controls + Progress */}
       <div className="w-[40%] max-w-[722px] flex flex-col items-center gap-1">
         <div className="flex items-center gap-6">
-          <button className="text-zinc-400 hover:text-white transition"><Shuffle size={16} /></button>
           <button onClick={previous} className="text-zinc-400 hover:text-white transition"><SkipBack size={18} fill="currentColor" /></button>
           <button
             onClick={togglePlay}
@@ -246,7 +270,6 @@ export default function Player() {
             {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
           </button>
           <button onClick={next} className="text-zinc-400 hover:text-white transition"><SkipForward size={18} fill="currentColor" /></button>
-          <button className="text-zinc-400 hover:text-white transition"><Repeat size={16} /></button>
         </div>
 
         <div className="w-full flex items-center gap-2 text-[11px] text-zinc-400 font-medium">
@@ -281,52 +304,25 @@ export default function Player() {
       <div className="w-[30%] min-w-[180px] flex items-center justify-end gap-3 text-zinc-400 relative">
         <button className="hover:text-white transition hidden md:block"><Mic2 size={16} /></button>
         <button 
-          onClick={() => setShowQueuePopover(!showQueuePopover)}
-          className={`transition hidden md:block ${showQueuePopover ? 'text-spotify-green' : 'hover:text-white'}`}
+          onClick={toggleQueue}
+          className={`transition hidden md:block ${isQueueOpen ? 'text-spotify-green' : 'hover:text-white'}`}
           title="Fila"
         >
           <ListMusic size={16} />
         </button>
         <button className="hover:text-white transition hidden md:block"><MonitorSpeaker size={16} /></button>
 
-        {/* --- Queue Popover --- */}
-        {showQueuePopover && (
-          <>
-            <div className="fixed inset-0 z-40 cursor-default" onClick={() => setShowQueuePopover(false)} />
-            <div className="absolute bottom-[calc(100%+20px)] right-16 w-[340px] max-h-[450px] bg-[#282828] rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.5)] flex flex-col z-50 overflow-hidden border border-white/10">
-              <div className="p-4 bg-[#282828] shrink-0 border-b border-white/5">
-                <h3 className="text-white font-bold text-lg">A seguir</h3>
-              </div>
-              <div className="p-2 overflow-y-auto custom-scrollbar flex-1 flex flex-col gap-1">
-                {nextSongs.length === 0 ? (
-                  <div className="text-zinc-400 text-sm p-4 text-center">Não há músicas na fila.</div>
-                ) : (
-                  nextSongs.map((song, i) => (
-                    <div key={`${song.id}-${i}`} className="flex items-center gap-3 p-2 rounded-md hover:bg-white/10 transition-colors group cursor-pointer" onClick={() => { playSong(song, queue); setShowQueuePopover(false); }}>
-                      <div className="w-10 h-10 rounded overflow-hidden shrink-0 bg-zinc-800 flex items-center justify-center relative">
-                        {song.cover_url ? (
-                          <img src={song.cover_url} className="w-full h-full object-cover" alt="" />
-                        ) : (
-                          <span className="text-zinc-500 text-xs">&#9835;</span>
-                        )}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                          <Play size={16} fill="white" className="text-white ml-0.5" />
-                        </div>
-                      </div>
-                      <div className="flex flex-col min-w-0 pr-2">
-                        <span className="text-sm font-medium text-white truncate">{song.title}</span>
-                        <span className="text-xs text-zinc-400 truncate">{song.artist}</span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </>
-        )}
+        {/* --- Queue now lives in RightPanel --- */}
 
         <div className="flex items-center gap-2 w-[100px] group relative h-4">
-          <button onClick={() => setVolume(volume === 0 ? 1 : 0)} className="hover:text-white transition z-20">
+          <button onClick={() => {
+            if (volume === 0) {
+              setVolume(previousVolume > 0 ? previousVolume : 1)
+            } else {
+              setPreviousVolume(volume)
+              setVolume(0)
+            }
+          }} className="hover:text-white transition z-20">
             {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
           </button>
           <div className="flex-1 relative flex items-center h-full">

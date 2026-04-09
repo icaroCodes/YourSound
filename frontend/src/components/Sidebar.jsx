@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Home, Search, Library, Plus, ListMusic, Music2, Users, Folder, X, List, ChevronRight, Bell } from 'lucide-react'
+import { Home, Search, Library, Plus, ListMusic, Music2, Users, Folder, X, List, ChevronRight, Bell, Globe, Lock } from 'lucide-react'
 import { api } from '../lib/api'
 import { useAuthStore } from '../store/useAuthStore'
 import { useLikeStore } from '../store/useLikeStore'
 import { usePlayerStore } from '../store/usePlayerStore'
+import AdminRequestsModal from './AdminRequestsModal'
 
 export default function Sidebar({ collapsed, toggleSidebar }) {
   const { pathname } = useLocation()
@@ -15,9 +16,11 @@ export default function Sidebar({ collapsed, toggleSidebar }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [newPlaylistName, setNewPlaylistName] = useState('')
+  const [newPlaylistPublic, setNewPlaylistPublic] = useState(false)
   const [creating, setCreating] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchFilter, setSearchFilter] = useState('')
+  const [adminModalOpen, setAdminModalOpen] = useState(false)
   const menuRef = useRef(null)
 
   useEffect(() => {
@@ -39,9 +42,10 @@ export default function Sidebar({ collapsed, toggleSidebar }) {
     if (!newPlaylistName.trim()) return
     setCreating(true)
     try {
-      const created = await api.createPlaylist(newPlaylistName.trim())
+      const created = await api.createPlaylist(newPlaylistName.trim(), newPlaylistPublic)
       setPlaylists(prev => [...prev, created])
       setNewPlaylistName('')
+      setNewPlaylistPublic(false)
       setCreateModalOpen(false)
       setMenuOpen(false)
     } catch (err) {
@@ -54,8 +58,6 @@ export default function Sidebar({ collapsed, toggleSidebar }) {
   const filteredPlaylists = searchFilter
     ? playlists.filter(pl => pl.name.toLowerCase().includes(searchFilter.toLowerCase()))
     : playlists
-
-  const username = userProfile?.email?.split('@')[0] || 'Usuário'
 
   return (
     <>
@@ -133,6 +135,17 @@ export default function Sidebar({ collapsed, toggleSidebar }) {
                             className="bg-white/10 text-white placeholder-zinc-500 rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-white/30 w-full"
                           />
                           <button
+                            type="button"
+                            onClick={() => setNewPlaylistPublic(p => !p)}
+                            className="flex items-center gap-2 text-xs py-1.5 px-1 rounded hover:bg-white/5 transition-colors self-start"
+                          >
+                            {newPlaylistPublic ? (
+                              <><Globe size={14} className="text-spotify-green" /><span className="text-spotify-green font-medium">Pública</span></>
+                            ) : (
+                              <><Lock size={14} className="text-zinc-400" /><span className="text-zinc-400">Privada</span></>
+                            )}
+                          </button>
+                          <button
                             type="submit"
                             disabled={!newPlaylistName.trim() || creating}
                             className="bg-white text-black font-semibold rounded-full py-1.5 text-sm hover:scale-105 transition-transform disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100"
@@ -147,10 +160,13 @@ export default function Sidebar({ collapsed, toggleSidebar }) {
               </div>
 
               {userProfile?.role === 'admin' && (
-                <button className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-indigo-400 hover:text-indigo-300 relative" title="Notificações">
-                  <Bell size={20} />
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-indigo-500 rounded-full border border-zinc-900"></span>
-                </button>
+                <>
+                  <button onClick={() => setAdminModalOpen(true)} className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-indigo-400 hover:text-indigo-300 relative" title="Notificações / Pedidos">
+                    <Bell size={20} />
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-indigo-500 rounded-full border border-zinc-900"></span>
+                  </button>
+                  {adminModalOpen && <AdminRequestsModal onClose={() => setAdminModalOpen(false)} />}
+                </>
               )}
 
               <button className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-zinc-400 hover:text-white" title="Mostrar mais">
@@ -232,13 +248,17 @@ export default function Sidebar({ collapsed, toggleSidebar }) {
           {/* User Playlists */}
           {filteredPlaylists.map(pl => (
             <Link key={pl.id} to={`/playlists/${pl.id}`} className={`flex items-center p-2 rounded-md hover:bg-white/[0.07] transition-colors ${collapsed ? 'justify-center mb-0.5' : 'gap-3'}`} title={pl.name}>
-              <div className="w-12 h-12 bg-zinc-800 flex items-center justify-center rounded shadow shrink-0">
-                <ListMusic size={18} className="text-zinc-500" />
-              </div>
+              {pl.cover_url ? (
+                <img src={pl.cover_url} alt="" className="w-12 h-12 rounded object-cover shadow shrink-0" />
+              ) : (
+                <div className="w-12 h-12 bg-zinc-800 flex items-center justify-center rounded shadow shrink-0">
+                  <ListMusic size={18} className="text-zinc-500" />
+                </div>
+              )}
               {!collapsed && (
                 <div className="flex flex-col min-w-0">
                   <span className={`font-semibold text-sm truncate ${pathname === `/playlists/${pl.id}` ? 'text-spotify-green' : 'text-white'}`}>{pl.name}</span>
-                  <span className="text-xs text-zinc-400 truncate">Playlist &bull; {username}</span>
+                  <span className="text-xs text-zinc-400 truncate">Playlist</span>
                 </div>
               )}
             </Link>

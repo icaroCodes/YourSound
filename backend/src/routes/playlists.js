@@ -20,7 +20,7 @@ router.get('/', verifyAuth, async (req, res) => {
     const { data, error } = await supabase
       .from('playlists')
       .select('*')
-      .eq('user_id', req.userId)
+      .or(`user_id.eq."${req.userId}",is_public.eq.true`)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -54,8 +54,8 @@ router.get('/:id', verifyAuth, async (req, res) => {
       return res.status(404).json({ error: 'Playlist não encontrada.' });
     }
 
-    // Ownership check
-    if (playlist.user_id !== req.userId) {
+    // Ownership check (or public access)
+    if (playlist.user_id !== req.userId && !playlist.is_public) {
       return res.status(403).json({ error: 'Acesso negado a esta playlist.' });
     }
 
@@ -111,9 +111,11 @@ router.post('/', verifyAuth, async (req, res) => {
       return res.status(400).json({ error: 'Nome da playlist é obrigatório.' });
     }
 
+    const is_public = req.body.is_public !== undefined ? !!req.body.is_public : false;
+
     const { data, error } = await supabase
       .from('playlists')
-      .insert({ name, user_id: req.userId, is_public: false })
+      .insert({ name, user_id: req.userId, is_public })
       .select()
       .single();
 
@@ -159,6 +161,9 @@ router.patch('/:id', verifyAuth, async (req, res) => {
     }
     if (req.body.description !== undefined) {
       updates.description = sanitizeString(req.body.description, 200);
+    }
+    if (req.body.is_public !== undefined) {
+      updates.is_public = !!req.body.is_public;
     }
 
     if (Object.keys(updates).length === 0) {

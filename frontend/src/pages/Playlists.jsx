@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '../store/useAuthStore'
 import { api } from '../lib/api'
-import { Plus, ListMusic, Trash2 } from 'lucide-react'
+import { Plus, ListMusic, Trash2, Globe, Lock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 export default function Playlists() {
   const { user } = useAuthStore()
   const [playlists, setPlaylists] = useState([])
   const [newPlaylistName, setNewPlaylistName] = useState('')
+  const [newPlaylistPublic, setNewPlaylistPublic] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -33,9 +34,10 @@ export default function Playlists() {
     if (!newPlaylistName.trim()) return
 
     try {
-      const data = await api.createPlaylist(newPlaylistName)
+      const data = await api.createPlaylist(newPlaylistName, newPlaylistPublic)
       setPlaylists([data, ...playlists])
       setNewPlaylistName('')
+      setNewPlaylistPublic(false)
     } catch (err) {
       console.error(err)
     }
@@ -57,7 +59,7 @@ export default function Playlists() {
         <p className="text-zinc-400">Crie listas personalizadas para os seus estudos e momentos de foco.</p>
       </div>
 
-      <form onSubmit={createPlaylist} className="flex gap-4">
+      <form onSubmit={createPlaylist} className="flex items-center gap-4 flex-wrap">
         <input 
           type="text" 
           value={newPlaylistName} 
@@ -65,6 +67,19 @@ export default function Playlists() {
           placeholder="Nome da nova playlist..."
           className="flex-1 max-w-md px-4 py-2.5 bg-zinc-900/50 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
+        <button
+          type="button"
+          onClick={() => setNewPlaylistPublic(p => !p)}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition font-medium text-sm ${
+            newPlaylistPublic
+              ? 'border-green-500/40 bg-green-500/10 text-green-400'
+              : 'border-white/10 bg-zinc-900/50 text-zinc-400'
+          }`}
+          title={newPlaylistPublic ? 'Pública — todos podem ver' : 'Privada — só você pode ver'}
+        >
+          {newPlaylistPublic ? <Globe size={16} /> : <Lock size={16} />}
+          {newPlaylistPublic ? 'Pública' : 'Privada'}
+        </button>
         <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition shadow-lg shadow-indigo-500/20 flex items-center gap-2">
           <Plus size={18} /> Criar
         </button>

@@ -2,16 +2,28 @@ import { useState, useEffect } from 'react'
 import { useAuthStore } from '../store/useAuthStore'
 import { usePlayerStore } from '../store/usePlayerStore'
 import { api } from '../lib/api'
-import { Play, Check, X, BarChart3, Users, Music2, ListMusic } from 'lucide-react'
+import { Play, Check, X, BarChart3, Users, Music2, ListMusic, Pencil, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 export default function Admin() {
   const { userProfile } = useAuthStore()
   const { playSong } = usePlayerStore()
   const navigate = useNavigate()
+  
+  const [activeTab, setActiveTab] = useState('pending') // 'pending' | 'all'
   const [pendingSongs, setPendingSongs] = useState([])
+  const [allSongs, setAllSongs] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
+
+  // Edit Modal State
+  const [editSong, setEditSong] = useState(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editArtist, setEditArtist] = useState('')
+  const [savingAction, setSavingAction] = useState(false)
+
+  // Feedback Messages
+  const [feedback, setFeedback] = useState('')
 
   useEffect(() => {
     if (userProfile && userProfile.role !== 'admin') {
@@ -24,13 +36,15 @@ export default function Admin() {
 
   const fetchData = async () => {
     try {
-      // Both calls go through the backend with admin middleware
-      const [songsData, statsData] = await Promise.all([
+      setLoading(true)
+      const [pendingData, statsData, allData] = await Promise.all([
         api.getPendingSongs(),
-        api.getAdminStats()
+        api.getAdminStats(),
+        api.getAdminAllSongs()
       ])
-      setPendingSongs(songsData)
+      setPendingSongs(pendingData)
       setStats(statsData)
+      setAllSongs(allData)
     } catch (err) {
       console.error('[Admin] Error:', err.message)
     } finally {
@@ -38,27 +52,83 @@ export default function Admin() {
     }
   }
 
+  const showFeedback = (msg) => {
+    setFeedback(msg)
+    setTimeout(() => setFeedback(''), 3000)
+  }
+
   const updateStatus = async (id, status) => {
     try {
-      // Goes through backend: verifyAuth + adminOnly middleware
       await api.updateSongStatus(id, status)
       setPendingSongs(pendingSongs.filter(s => s.id !== id))
       if (stats) {
         setStats({ ...stats, pendingSongs: stats.pendingSongs - 1 })
+      }
+      showFeedback(`Música ${status === 'approved' ? 'aprovada' : 'rejeitada'}.`)
+      
+      // se aprovar, recarrega allSongs pra mostrar na aba
+      if (status === 'approved') {
+        const allData = await api.getAdminAllSongs()
+        setAllSongs(allData)
       }
     } catch (err) {
       console.error('[Admin] Status update error:', err.message)
     }
   }
 
+  const openEditModal = (song) => {
+    setEditSong(song)
+    setEditTitle(song.title)
+    setEditArtist(song.artist)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editTitle.trim() || !editArtist.trim()) return
+
+    setSavingAction(true)
+    try {
+      await api.editAdminSong(editSong.id, { title: editTitle, artist: editArtist })
+      setAllSongs(allSongs.map(s => s.id === editSong.id ? { ...s, title: editTitle, artist: editArtist } : s))
+      setPendingSongs(pendingSongs.map(s => s.id === editSong.id ? { ...s, title: editTitle, artist: editArtist } : s))
+      setEditSong(null)
+      showFeedback('Música editada com sucesso.')
+    } catch (err) {
+      console.error('[Admin] Edit error:', err.message)
+      alert("Erro ao editar música")
+    } finally {
+      setSavingAction(false)
+    }
+  }
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("Atenção! Você tem certeza que deseja excluir esta música publicamente? Ela será deletada para todos.")) return
+
+    try {
+      await api.deleteAdminSong(id)
+      setAllSongs(allSongs.filter(s => s.id !== id))
+      setPendingSongs(pendingSongs.filter(s => s.id !== id))
+      if (stats) setStats({ ...stats, totalSongs: stats.totalSongs - 1 })
+      showFeedback('Música deletada permanentemente.')
+    } catch (err) {
+      console.error('[Admin] Delete error:', err.message)
+      alert("Erro ao excluir música")
+    }
+  }
+
   if (loading) return <div className="text-zinc-400">Carregando painel admin...</div>
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-5xl mx-auto relative">
       <div>
         <h1 className="text-3xl font-bold tracking-tight mb-2 text-indigo-400">Painel do Administrador</h1>
         <p className="text-zinc-400">Gerenciamento e aprovação de músicas públicas.</p>
       </div>
+
+      {feedback && (
+        <div className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 p-3 rounded-lg text-sm text-center sticky top-4 z-50">
+          {feedback}
+        </div>
+      )}
 
       {/* Stats */}
       {stats && (
@@ -70,60 +140,129 @@ export default function Admin() {
         </div>
       )}
 
+      {/* Tabs */}
+      <div className="flex items-center gap-4 border-b border-white/10 pb-px">
+        <button 
+          onClick={() => setActiveTab('pending')}
+          className={`pb-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'pending' ? 'border-spotify-green text-white' : 'border-transparent text-zinc-400 hover:text-white'}`}
+        >
+          Pendentes ({pendingSongs.length})
+        </button>
+        <button 
+          onClick={() => setActiveTab('all')}
+          className={`pb-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'all' ? 'border-spotify-green text-white' : 'border-transparent text-zinc-400 hover:text-white'}`}
+        >
+          Todas Músicas Públicas ({allSongs.length})
+        </button>
+      </div>
+
       <div className="glass rounded-2xl border border-white/5 overflow-hidden">
-        <div className="p-4 bg-zinc-900/80 border-b border-white/5 font-semibold text-white">
-          Músicas Pendentes ({pendingSongs.length})
-        </div>
-        
-        {pendingSongs.length === 0 ? (
-          <div className="p-8 text-center text-zinc-500">Nenhuma música pendente de aprovação.</div>
-        ) : (
-          <div className="divide-y divide-white/5">
-            {pendingSongs.map(song => (
-              <div key={song.id} className="p-4 flex items-center justify-between hover:bg-white/[0.02] transition">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded object-cover shadow bg-zinc-800 overflow-hidden">
-                    {song.cover_url ? (
-                      <img src={song.cover_url} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-zinc-500">♪</div>
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="font-medium text-white">{song.title}</h3>
-                    <p className="text-sm text-zinc-400">{song.artist}</p>
-                  </div>
+        {activeTab === 'pending' && (
+          <>
+            <div className="p-4 bg-zinc-900/80 border-b border-white/5 font-semibold text-white">
+              Aprovação de Envios
+            </div>
+            {pendingSongs.length === 0 ? (
+              <div className="p-8 text-center text-zinc-500">Nenhuma música pendente de aprovação.</div>
+            ) : (
+              <div className="divide-y divide-white/5">
+                {pendingSongs.map(song => (
+                  <SongRow 
+                    key={song.id} 
+                    song={song} 
+                    playSong={playSong}
+                    onApprove={() => updateStatus(song.id, 'approved')}
+                    onReject={() => updateStatus(song.id, 'rejected')}
+                    onEdit={() => openEditModal(song)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === 'all' && (
+          <>
+            <div className="p-4 bg-zinc-900/80 border-b border-white/5 font-semibold text-white flex justify-between items-center">
+              <span>Gerenciar Músicas Públicas</span>
+            </div>
+            {allSongs.length === 0 ? (
+              <div className="p-8 text-center text-zinc-500">Nenhuma música pública.</div>
+            ) : (
+              <div className="divide-y divide-white/5 max-h-[600px] overflow-y-auto custom-scrollbar">
+                {allSongs.map(song => (
+                  <SongRow 
+                    key={song.id} 
+                    song={song} 
+                    playSong={playSong}
+                    onDelete={() => handleDelete(song.id)}
+                    onEdit={() => openEditModal(song)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Edit Modal */}
+      {editSong && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-zinc-900 rounded-xl max-w-md w-full shadow-2xl overflow-hidden border border-white/10">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-white">Editar Música</h2>
+                <button onClick={() => setEditSong(null)} className="text-zinc-400 hover:text-white transition">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2 block">Título</label>
+                  <input
+                    type="text"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-md py-2.5 px-4 text-white focus:outline-none focus:ring-2 disabled:opacity-50"
+                    placeholder="Título da música"
+                    disabled={savingAction}
+                  />
                 </div>
-                
-                <div className="flex items-center gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2 block">Artista / Banda</label>
+                  <input
+                    type="text"
+                    value={editArtist}
+                    onChange={(e) => setEditArtist(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-md py-2.5 px-4 text-white focus:outline-none focus:ring-2 disabled:opacity-50"
+                    placeholder="Nome do artista"
+                    disabled={savingAction}
+                  />
+                </div>
+
+                <div className="pt-4 flex justify-end gap-3">
                   <button 
-                    onClick={() => playSong(song, [song])}
-                    className="p-2 bg-zinc-800 text-white rounded-full hover:bg-zinc-700 transition"
-                    title="Ouvir"
+                    onClick={() => setEditSong(null)}
+                    disabled={savingAction}
+                    className="px-4 py-2 rounded-md font-bold text-sm text-white hover:bg-white/10 transition"
                   >
-                    <Play fill="currentColor" size={16} />
+                    Cancelar
                   </button>
-                  <div className="w-px h-6 bg-white/10 mx-2"></div>
                   <button 
-                    onClick={() => updateStatus(song.id, 'approved')}
-                    className="p-2 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500 hover:text-white rounded transition shadow-lg shadow-emerald-500/10"
-                    title="Aprovar"
+                    onClick={handleSaveEdit}
+                    disabled={savingAction || !editTitle.trim() || !editArtist.trim()}
+                    className="bg-white text-black px-6 py-2 rounded-md font-bold text-sm hover:scale-105 transition disabled:opacity-50 flex items-center"
                   >
-                    <Check size={20} />
-                  </button>
-                  <button 
-                    onClick={() => updateStatus(song.id, 'rejected')}
-                    className="p-2 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded transition shadow-lg shadow-red-500/10"
-                    title="Rejeitar"
-                  >
-                    <X size={20} />
+                    {savingAction ? 'Salvando...' : 'Salvar Alterações'}
                   </button>
                 </div>
               </div>
-            ))}
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
     </div>
   )
 }
@@ -133,6 +272,77 @@ function StatCard({ icon, label, value, color = 'text-white' }) {
     <div className="p-4 bg-zinc-900/40 rounded-xl border border-white/5">
       <div className="flex items-center gap-2 text-zinc-400 mb-2">{icon} <span className="text-xs font-medium uppercase tracking-wider">{label}</span></div>
       <span className={`text-2xl font-bold ${color}`}>{value}</span>
+    </div>
+  )
+}
+
+function SongRow({ song, playSong, onApprove, onReject, onEdit, onDelete }) {
+  return (
+    <div className="p-4 flex items-center justify-between hover:bg-white/[0.02] transition">
+      <div className="flex items-center gap-4 min-w-0 pr-4">
+        <div className="w-12 h-12 rounded object-cover shadow bg-zinc-800 shrink-0 overflow-hidden">
+          {song.cover_url ? (
+            <img src={song.cover_url} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-zinc-500">♪</div>
+          )}
+        </div>
+        <div className="min-w-0">
+          <h3 className="font-medium text-white truncate">{song.title}</h3>
+          <p className="text-sm text-zinc-400 truncate">{song.artist}</p>
+        </div>
+      </div>
+      
+      <div className="flex items-center gap-2 shrink-0">
+        <button 
+          onClick={() => playSong(song, [song])}
+          className="p-2 bg-zinc-800 text-white rounded-full hover:bg-zinc-700 transition mx-1"
+          title="Ouvir"
+        >
+          <Play fill="currentColor" size={16} />
+        </button>
+
+        <div className="w-px h-6 bg-white/10 mx-1"></div>
+
+        {onEdit && (
+          <button 
+            onClick={onEdit}
+            className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded transition"
+            title="Editar (Admin)"
+          >
+            <Pencil size={18} />
+          </button>
+        )}
+
+        {onDelete && (
+          <button 
+            onClick={onDelete}
+            className="p-1.5 text-red-500/70 hover:text-red-400 hover:bg-red-500/10 rounded transition"
+            title="Excluir (Admin)"
+          >
+            <Trash2 size={18} />
+          </button>
+        )}
+
+        {onApprove && onReject && (
+          <>
+            <button 
+              onClick={onApprove}
+              className="p-1.5 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500 hover:text-white rounded transition shadow-lg shadow-emerald-500/10 ml-1"
+              title="Aprovar"
+            >
+              <Check size={18} />
+            </button>
+            <button 
+              onClick={onReject}
+              className="p-1.5 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded transition shadow-lg shadow-red-500/10"
+              title="Rejeitar"
+            >
+              <X size={18} />
+            </button>
+          </>
+        )}
+      </div>
     </div>
   )
 }

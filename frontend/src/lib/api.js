@@ -79,12 +79,12 @@ export const api = {
     return handleResponse(res);
   },
 
-  async createPlaylist(name) {
+  async createPlaylist(name, is_public = false) {
     const headers = await getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/playlists`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
+      body: JSON.stringify({ name, is_public })
     });
     return handleResponse(res);
   },
@@ -184,6 +184,31 @@ export const api = {
   async getAdminStats() {
     const headers = await getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/admin/stats`, { headers });
+    return handleResponse(res);
+  },
+
+  async getAdminAllSongs() {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/admin/all-songs`, { headers });
+    return handleResponse(res);
+  },
+
+  async editAdminSong(songId, data) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/admin/songs/${songId}/edit`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return handleResponse(res);
+  },
+
+  async deleteAdminSong(songId) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/admin/songs/${songId}`, {
+      method: 'DELETE',
+      headers
+    });
     return handleResponse(res);
   },
 

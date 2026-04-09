@@ -1,8 +1,8 @@
 import { usePlayerStore } from '../store/usePlayerStore'
-import { MoreHorizontal, X } from 'lucide-react'
+import { MoreHorizontal, X, Play } from 'lucide-react'
 
 export default function RightPanel() {
-  const { currentSong, queue } = usePlayerStore()
+  const { currentSong, queue, isQueueOpen, toggleQueue, playSong } = usePlayerStore()
 
   if (!currentSong) {
     return (
@@ -14,13 +14,72 @@ export default function RightPanel() {
     )
   }
 
-  // Descobrir a próxima música na fila
-  let nextSong = null
-  if (queue && queue.length > 0) {
-    const currentIndex = queue.findIndex(s => s.id === currentSong.id)
-    if (currentIndex >= 0 && currentIndex < queue.length - 1) {
-      nextSong = queue[currentIndex + 1]
-    }
+  const currentIndex = queue?.findIndex(s => s.id === currentSong.id) ?? -1
+  const nextSongs = currentIndex >= 0 && queue ? queue.slice(currentIndex + 1, currentIndex + 11) : []
+  const nextSong = nextSongs.length > 0 ? nextSongs[0] : null
+
+  if (isQueueOpen) {
+    return (
+      <div className="h-full flex flex-col p-4 overflow-y-auto custom-scrollbar">
+        {/* Header Fila */}
+        <div className="flex items-center justify-between mb-6 shrink-0 mt-2">
+          <h3 className="text-white font-bold text-lg tracking-tight">Fila</h3>
+          <button onClick={toggleQueue} className="text-zinc-400 hover:text-white transition rounded-full hover:bg-white/10 p-1" title="Fechar a fila">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Tocando agora */}
+        <div className="mb-6 shrink-0">
+          <h4 className="text-white font-bold text-sm mb-3">Tocando agora</h4>
+          <div className="flex items-center gap-3 p-2 -mx-2 rounded-md hover:bg-white/[0.07] transition-colors group cursor-pointer" onClick={toggleQueue}>
+            <div className="w-12 h-12 rounded overflow-hidden shrink-0 bg-zinc-800 flex items-center justify-center relative">
+              {currentSong.cover_url ? (
+                <img src={currentSong.cover_url} className="w-full h-full object-cover" alt="" />
+              ) : (
+                <span className="text-zinc-500 text-xs">&#9835;</span>
+              )}
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded">
+                <Play size={16} fill="white" className="text-white ml-0.5" />
+              </div>
+            </div>
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="text-[15px] font-bold text-spotify-green truncate">{currentSong.title}</span>
+              <span className="text-[13px] text-zinc-400 truncate">{currentSong.artist}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Próximas */}
+        <div className="flex-1 flex flex-col min-h-0">
+          <h4 className="text-white font-bold text-sm mb-3">A seguir</h4>
+          <div className="flex flex-col">
+            {nextSongs.length === 0 ? (
+              <div className="text-zinc-500 text-sm p-2">Não há músicas na fila.</div>
+            ) : (
+              nextSongs.map((song, i) => (
+                <div key={`${song.id}-${i}`} className="flex items-center gap-3 p-2 -mx-2 rounded-md hover:bg-white/[0.07] transition-colors group cursor-pointer" onClick={() => playSong(song, queue)}>
+                  <div className="w-12 h-12 rounded overflow-hidden shrink-0 bg-zinc-800 flex items-center justify-center relative">
+                    {song.cover_url ? (
+                      <img src={song.cover_url} className="w-full h-full object-cover" alt="" />
+                    ) : (
+                      <span className="text-zinc-500 text-xs">&#9835;</span>
+                    )}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded">
+                      <Play size={16} fill="white" className="text-white ml-0.5" />
+                    </div>
+                  </div>
+                  <div className="flex flex-col min-w-0 pr-2">
+                    <span className="text-[15px] font-medium text-white truncate group-hover:underline">{song.title}</span>
+                    <span className="text-[13px] text-zinc-400 truncate">{song.artist}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -75,7 +134,7 @@ export default function RightPanel() {
         <div className="mt-4 bg-zinc-900/50 rounded-xl p-5 border border-white/5 shrink-0 mb-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-white text-[15px]">A seguir</h3>
-            <button className="text-xs font-bold text-zinc-400 hover:text-white transition-colors">Abrir fila</button>
+            <button onClick={toggleQueue} className="text-xs font-bold text-zinc-400 hover:text-white transition-colors">Abrir fila</button>
           </div>
           
           <div className="flex items-center gap-3 group cursor-pointer p-2 -mx-2 rounded-md hover:bg-white/5 transition-colors">

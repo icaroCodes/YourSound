@@ -32,6 +32,26 @@ router.get('/pending-songs', verifyAuth, adminOnly, async (req, res) => {
 });
 
 /**
+ * GET /api/admin/all-songs
+ * Returns all public songs for admin management.
+ */
+router.get('/all-songs', verifyAuth, adminOnly, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('songs')
+      .select('*')
+      .eq('is_public', true)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    console.error('[GET /admin/all-songs]', err.message);
+    res.status(500).json({ error: 'Erro ao buscar todas as músicas públicas.' });
+  }
+});
+
+/**
  * PATCH /api/admin/songs/:id
  * Updates a song's status (approve/reject).
  * SECURITY: Only 'approved' and 'rejected' are allowed — enforced server-side.
@@ -56,12 +76,8 @@ router.patch('/songs/:id', verifyAuth, adminOnly, async (req, res) => {
       .eq('id', songId)
       .single();
 
-    if (fetchErr || !existing) {
+    if (!existing) {
       return res.status(404).json({ error: 'Música não encontrada.' });
-    }
-
-    if (existing.status !== 'pending') {
-      return res.status(400).json({ error: 'Esta música já foi processada.' });
     }
 
     const { data, error } = await supabase
@@ -76,6 +92,66 @@ router.patch('/songs/:id', verifyAuth, adminOnly, async (req, res) => {
   } catch (err) {
     console.error('[PATCH /admin/songs/:id]', err.message);
     res.status(500).json({ error: 'Erro ao atualizar status.' });
+  }
+});
+
+/**
+ * PATCH /api/admin/songs/:id/edit
+ * Edits a public song's details (title, artist)
+ */
+router.patch('/songs/:id/edit', verifyAuth, adminOnly, async (req, res) => {
+  try {
+    const songId = req.params.id;
+    const { title, artist } = req.body;
+
+    if (!isValidUUID(songId)) {
+      return res.status(400).json({ error: 'ID de música inválido.' });
+    }
+
+    const updates = {};
+    if (title) updates.title = title;
+    if (artist) updates.artist = artist;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'Nenhum dado para atualizar.' });
+    }
+
+    const { data, error } = await supabase
+      .from('songs')
+      .update(updates)
+      .eq('id', songId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json({ success: true, song: data });
+  } catch (err) {
+    console.error('[PATCH /admin/songs/:id/edit]', err.message);
+    res.status(500).json({ error: 'Erro ao editar música.' });
+  }
+});
+
+/**
+ * DELETE /api/admin/songs/:id
+ * Deletes any public song as an admin.
+ */
+router.delete('/songs/:id', verifyAuth, adminOnly, async (req, res) => {
+  try {
+    const songId = req.params.id;
+    if (!isValidUUID(songId)) {
+      return res.status(400).json({ error: 'ID de música inválido.' });
+    }
+
+    const { error } = await supabase
+      .from('songs')
+      .delete()
+      .eq('id', songId);
+
+    if (error) throw error;
+    res.json({ success: true, message: 'Música excluída com sucesso.' });
+  } catch (err) {
+    console.error('[DELETE /admin/songs/:id]', err.message);
+    res.status(500).json({ error: 'Erro ao excluir música.' });
   }
 });
 

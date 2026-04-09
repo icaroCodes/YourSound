@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { usePlayerStore } from '../store/usePlayerStore'
 import { useAuthStore } from '../store/useAuthStore'
 import { api } from '../lib/api'
-import { Play } from 'lucide-react'
+import { Play, Pause } from 'lucide-react'
+import PlayingBars from '../components/PlayingBars'
 
 export default function Home() {
   const [songs, setSongs] = useState([])
   const [loading, setLoading] = useState(true)
-  const { playSong } = usePlayerStore()
+  const { playSong, currentSong, isPlaying, togglePlay } = usePlayerStore()
   const { user, userProfile } = useAuthStore()
 
   useEffect(() => {
@@ -76,28 +77,39 @@ export default function Home() {
         {/* Recent Grid */}
         {recentSongs.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {recentSongs.map(song => (
-              <div
-                key={song.id}
-                className="group flex items-center bg-white/[0.04] hover:bg-white/10 rounded overflow-hidden transition-colors cursor-pointer pr-4"
-                onClick={() => playSong(song, songs)}
-              >
-                <div className="w-16 h-16 shrink-0 bg-zinc-800 shadow">
-                  {song.cover_url ? (
-                    <img src={song.cover_url} className="w-full h-full object-cover" alt="" />
-                  ) : <div className="w-full h-full flex items-center justify-center text-zinc-500">&#9835;</div>}
-                </div>
-                <div className="px-4 font-bold text-sm tracking-wide truncate flex-1">
-                  {song.title}
-                </div>
-                <button
-                  className="w-10 h-10 bg-spotify-green text-black rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 hover:scale-105 transition-all shrink-0"
-                  onClick={(e) => { e.stopPropagation(); playSong(song, songs) }}
+            {recentSongs.map(song => {
+              const isActive = currentSong?.id === song.id
+              const playing = isActive && isPlaying
+              return (
+                <div
+                  key={song.id}
+                  className={`group flex items-center rounded overflow-hidden transition-colors cursor-pointer pr-4 ${isActive ? 'bg-white/10' : 'bg-white/4 hover:bg-white/10'}`}
+                  onClick={() => isActive ? togglePlay() : playSong(song, songs)}
                 >
-                  <Play fill="currentColor" size={18} className="ml-0.5" />
-                </button>
-              </div>
-            ))}
+                  <div className="relative w-16 h-16 shrink-0 bg-zinc-800 shadow">
+                    {song.cover_url ? (
+                      <img src={song.cover_url} className="w-full h-full object-cover" alt="" />
+                    ) : <div className="w-full h-full flex items-center justify-center text-zinc-500">&#9835;</div>}
+                    {isActive && (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                        <PlayingBars isPlaying={playing} height={14} />
+                      </div>
+                    )}
+                  </div>
+                  <div className={`px-4 font-bold text-sm tracking-wide truncate flex-1 ${isActive ? 'text-spotify-green' : ''}`}>
+                    {song.title}
+                  </div>
+                  <button
+                    className="w-10 h-10 bg-spotify-green text-black rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 hover:scale-105 transition-all shrink-0"
+                    onClick={(e) => { e.stopPropagation(); isActive ? togglePlay() : playSong(song, songs) }}
+                  >
+                    {playing
+                      ? <Pause fill="currentColor" size={18} />
+                      : <Play fill="currentColor" size={18} className="ml-0.5" />}
+                  </button>
+                </div>
+              )
+            })}
           </div>
         )}
 
@@ -116,35 +128,46 @@ export default function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-              {(recommendedSongs.length > 0 ? recommendedSongs : recentSongs).map((song) => (
-                <div
-                  key={song.id}
-                  className="group p-4 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] transition duration-300 flex flex-col cursor-pointer"
-                  onClick={() => playSong(song, songs)}
-                >
-                  <div className="relative aspect-square rounded-md overflow-hidden mb-4 shadow-xl bg-zinc-800">
-                    {song.cover_url ? (
-                      <img src={song.cover_url} alt={song.title} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-zinc-800">
-                        <span className="text-zinc-500 text-3xl">&#9835;</span>
-                      </div>
-                    )}
-                    <button
-                      className="absolute bottom-2 right-2 w-12 h-12 bg-spotify-green text-black rounded-full flex items-center justify-center shadow-xl transform translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 hover:scale-105 hover:bg-spotify-green-hover"
-                      onClick={(e) => { e.stopPropagation(); playSong(song, songs) }}
-                    >
-                      <Play fill="currentColor" size={22} className="ml-0.5" />
-                    </button>
-                  </div>
-                  <h3 className="font-bold text-white truncate text-base mb-1">{song.title}</h3>
-                  <p className="text-zinc-400 text-sm truncate font-medium">{song.artist}</p>
+              {(recommendedSongs.length > 0 ? recommendedSongs : recentSongs).map((song) => {
+                const isActive = currentSong?.id === song.id
+                const playing = isActive && isPlaying
+                return (
+                  <div
+                    key={song.id}
+                    className={`group p-4 rounded-lg transition duration-300 flex flex-col cursor-pointer ${isActive ? 'bg-white/8' : 'bg-white/3 hover:bg-white/8'}`}
+                    onClick={() => isActive ? togglePlay() : playSong(song, songs)}
+                  >
+                    <div className="relative aspect-square rounded-md overflow-hidden mb-4 shadow-xl bg-zinc-800">
+                      {song.cover_url ? (
+                        <img src={song.cover_url} alt={song.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-zinc-800">
+                          <span className="text-zinc-500 text-3xl">&#9835;</span>
+                        </div>
+                      )}
+                      {isActive && (
+                        <div className="absolute inset-0 bg-black/40 flex items-end justify-start p-2">
+                          <PlayingBars isPlaying={playing} height={16} />
+                        </div>
+                      )}
+                      <button
+                        className="absolute bottom-2 right-2 w-12 h-12 bg-spotify-green text-black rounded-full flex items-center justify-center shadow-xl transform translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 hover:scale-105 hover:bg-spotify-green-hover"
+                        onClick={(e) => { e.stopPropagation(); isActive ? togglePlay() : playSong(song, songs) }}
+                      >
+                        {playing
+                          ? <Pause fill="currentColor" size={22} />
+                          : <Play fill="currentColor" size={22} className="ml-0.5" />}
+                      </button>
+                    </div>
+                    <h3 className={`font-bold truncate text-base mb-1 ${isActive ? 'text-spotify-green' : 'text-white'}`}>{song.title}</h3>
+                    <p className="text-zinc-400 text-sm truncate font-medium">{song.artist}</p>
 
-                  {song.user_id === user?.id && song.status === 'pending' && (
-                    <span className="mt-2 text-[10px] uppercase font-bold text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded inline-block self-start">Pendente de aprovação</span>
-                  )}
-                </div>
-              ))}
+                    {song.user_id === user?.id && song.status === 'pending' && (
+                      <span className="mt-2 text-[10px] uppercase font-bold text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded inline-block self-start">Pendente de aprovação</span>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </section>

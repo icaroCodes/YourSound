@@ -6,9 +6,11 @@ import { api } from '../lib/api'
 import {
   Play, Pause, Shuffle, UserPlus, MoreHorizontal,
   Clock, Search, Plus, Trash2, ListMusic, List, Heart, Camera,
-  Pencil, X, Check
+  Pencil, X, Check, Globe, Lock
 } from 'lucide-react'
 import { useLikeStore } from '../store/useLikeStore'
+import PlayingBars from '../components/PlayingBars'
+import { useDominantColor } from '../hooks/useDominantColor'
 
 export default function PlaylistDetails() {
   const { id } = useParams()
@@ -33,13 +35,19 @@ export default function PlaylistDetails() {
 
   // Edit / Delete state
   const [menuOpen, setMenuOpen] = useState(false)
-  const [editingName, setEditingName] = useState(false)
+  const [editModalOpen, setEditModalOpen] = useState(false)
   const [editName, setEditName] = useState('')
-  const [savingName, setSavingName] = useState(false)
+  const [editDescription, setEditDescription] = useState('')
+  const [editIsPublic, setEditIsPublic] = useState(false)
+  const [savingEdit, setSavingEdit] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const menuRef = useRef(null)
   const editInputRef = useRef(null)
+
+  // Compute coverUrl early so the hook always runs (Rules of Hooks)
+  const coverUrl = playlist?.cover_url || (songs.length > 0 ? songs[0]?.cover_url : null)
+  const bannerColor = useDominantColor(coverUrl)
 
   useEffect(() => {
     fetchPlaylistData()
@@ -56,10 +64,10 @@ export default function PlaylistDetails() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [menuOpen])
 
-  // Focus edit input when editing name
+  // Focus edit input when modal opens
   useEffect(() => {
-    if (editingName) editInputRef.current?.focus()
-  }, [editingName])
+    if (editModalOpen) editInputRef.current?.focus()
+  }, [editModalOpen])
 
   const fetchPlaylistData = async () => {
     try {
@@ -95,34 +103,44 @@ export default function PlaylistDetails() {
     }
   }
 
-  // ── Edit name ──
-  const startEditingName = () => {
+  // ── Edit modal ──
+  const openEditModal = () => {
     setEditName(playlist.name)
-    setEditingName(true)
+    setEditDescription(playlist.description || '')
+    setEditIsPublic(!!playlist.is_public)
+    setEditModalOpen(true)
     setMenuOpen(false)
   }
 
-  const savePlaylistName = async () => {
-    const trimmed = editName.trim()
-    if (!trimmed || trimmed === playlist.name) {
-      setEditingName(false)
+  const savePlaylistDetails = async () => {
+    const trimmedName = editName.trim()
+    if (!trimmedName) return
+
+    const fields = {}
+    if (trimmedName !== playlist.name) fields.name = trimmedName
+    if (editDescription.trim() !== (playlist.description || '')) fields.description = editDescription.trim()
+    if (editIsPublic !== !!playlist.is_public) fields.is_public = editIsPublic
+
+    if (Object.keys(fields).length === 0) {
+      setEditModalOpen(false)
       return
     }
+
     try {
-      setSavingName(true)
-      const updated = await api.updatePlaylist(id, { name: trimmed })
-      setPlaylist(prev => ({ ...prev, name: updated.name }))
-      setEditingName(false)
+      setSavingEdit(true)
+      const updated = await api.updatePlaylist(id, fields)
+      setPlaylist(prev => ({ ...prev, ...updated }))
+      setEditModalOpen(false)
     } catch (err) {
-      console.error('Erro ao renomear:', err.message)
+      console.error('Erro ao salvar:', err.message)
     } finally {
-      setSavingName(false)
+      setSavingEdit(false)
     }
   }
 
-  const handleNameKeyDown = (e) => {
-    if (e.key === 'Enter') savePlaylistName()
-    if (e.key === 'Escape') setEditingName(false)
+  const handleEditKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); savePlaylistDetails() }
+    if (e.key === 'Escape') setEditModalOpen(false)
   }
 
   // ── Delete playlist ──
@@ -174,8 +192,16 @@ export default function PlaylistDetails() {
     }
   }
 
+  const isPlaylistActive = songs.length > 0 && songs.some(s => s.id === currentSong?.id)
+  const isPlaylistPlaying = isPlaylistActive && isPlaying
+
   const handlePlayAll = () => {
-    if (songs.length > 0) playSong(songs[0], songs)
+    if (songs.length === 0) return
+    if (isPlaylistActive) {
+      togglePlay()
+    } else {
+      playSong(songs[0], songs)
+    }
   }
 
   const handleRowClick = (song) => {
@@ -263,8 +289,6 @@ export default function PlaylistDetails() {
   }
 
   const isOwner = playlist.user_id === user?.id
-  const username = userProfile?.email?.split('@')[0] || 'Usuário'
-  const coverUrl = playlist.cover_url || (songs.length > 0 ? songs[0].cover_url : null)
 
   return (
     <div className="pb-8">
@@ -280,7 +304,7 @@ export default function PlaylistDetails() {
       {/* ─── Gradient Header ─── */}
       <div
         className="px-6 pt-12 pb-6 flex items-end gap-6"
-        style={{ background: 'linear-gradient(to bottom, #5a4a28 0%, #3a3218 50%, #121212 100%)' }}
+        style={{ background: `linear-gradient(to bottom, ${bannerColor} 0%, #121212 100%)` }}
       >
         {/* Cover Art */}
         <div
@@ -310,47 +334,20 @@ export default function PlaylistDetails() {
 
         {/* Info */}
         <div className="flex flex-col gap-2 min-w-0 pb-1">
-          <span className="text-xs font-medium uppercase tracking-wider text-white/70">Playlist pública</span>
+          <span className="text-xs font-medium uppercase tracking-wider text-white/70 flex items-center gap-1.5">
+            {playlist.is_public ? <Globe size={12} /> : <Lock size={12} />}
+            Playlist {playlist.is_public ? 'pública' : 'privada'}
+          </span>
 
-          {/* Editable name */}
-          {editingName ? (
-            <div className="flex items-center gap-2">
-              <input
-                ref={editInputRef}
-                type="text"
-                value={editName}
-                onChange={e => setEditName(e.target.value)}
-                onKeyDown={handleNameKeyDown}
-                maxLength={50}
-                className="text-5xl md:text-7xl font-extrabold text-white tracking-tight leading-none bg-transparent border-b-2 border-white/40 focus:border-white outline-none w-full min-w-0"
-              />
-              <button
-                onClick={savePlaylistName}
-                disabled={savingName}
-                className="p-2 text-spotify-green hover:scale-110 transition shrink-0"
-                title="Salvar"
-              >
-                {savingName
-                  ? <div className="w-5 h-5 border-2 border-spotify-green border-t-transparent rounded-full animate-spin" />
-                  : <Check size={24} />}
-              </button>
-              <button
-                onClick={() => setEditingName(false)}
-                className="p-2 text-zinc-400 hover:text-white transition shrink-0"
-                title="Cancelar"
-              >
-                <X size={24} />
-              </button>
-            </div>
-          ) : (
-            <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tight leading-none wrap-break-word">
-              {playlist.name}
-            </h1>
+          <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tight leading-none wrap-break-word">
+            {playlist.name}
+          </h1>
+
+          {playlist.description && (
+            <p className="text-sm text-zinc-300 mt-1 max-w-xl line-clamp-2">{playlist.description}</p>
           )}
 
           <div className="flex items-center gap-1.5 text-sm mt-2 flex-wrap">
-            <span className="font-bold text-white hover:underline cursor-pointer">{username}</span>
-            <span className="text-zinc-400">&bull;</span>
             <span className="text-zinc-400">
               {songs.length} música{songs.length !== 1 ? 's' : ''}
               {totalDuration > 0 && `, ${formatTotalTime(totalDuration)}`}
@@ -368,7 +365,9 @@ export default function PlaylistDetails() {
             disabled={songs.length === 0}
             className="w-14 h-14 bg-spotify-green rounded-full flex items-center justify-center hover:scale-105 hover:bg-spotify-green-hover transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100"
           >
-            <Play fill="black" stroke="none" size={24} className="ml-0.5" />
+            {isPlaylistPlaying
+              ? <Pause fill="black" stroke="none" size={24} />
+              : <Play fill="black" stroke="none" size={24} className="ml-0.5" />}
           </button>
           <button className="text-zinc-400 hover:text-white transition p-2">
             <Shuffle size={22} />
@@ -390,7 +389,7 @@ export default function PlaylistDetails() {
               {menuOpen && (
                 <div className="absolute left-0 top-10 z-50 w-56 bg-[#282828] rounded-lg shadow-2xl py-1 text-sm overflow-hidden">
                   <button
-                    onClick={startEditingName}
+                    onClick={openEditModal}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/10 transition-colors text-left text-white"
                   >
                     <Pencil size={16} className="text-zinc-400" />
@@ -414,9 +413,89 @@ export default function PlaylistDetails() {
         </div>
       </div>
 
+      {/* ─── Edit Details Modal ─── */}
+      {editModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={() => !savingEdit && setEditModalOpen(false)}>
+          <div className="bg-[#282828] rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-white">Editar detalhes</h3>
+              <button onClick={() => setEditModalOpen(false)} className="text-zinc-400 hover:text-white transition p-1"><X size={20} /></button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Name */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Nome</label>
+                <input
+                  ref={editInputRef}
+                  type="text"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  onKeyDown={handleEditKeyDown}
+                  maxLength={50}
+                  className="w-full px-3 py-2.5 bg-white/7 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-white/30 placeholder:text-zinc-500"
+                  placeholder="Nome da playlist"
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Descrição <span className="text-zinc-600 font-normal">(opcional)</span></label>
+                <textarea
+                  value={editDescription}
+                  onChange={e => setEditDescription(e.target.value)}
+                  maxLength={200}
+                  rows={3}
+                  className="w-full px-3 py-2.5 bg-white/7 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-white/30 placeholder:text-zinc-500 resize-none"
+                  placeholder="Adicione uma descrição opcional"
+                />
+                <span className="text-[10px] text-zinc-600 mt-0.5 block text-right">{editDescription.length}/200</span>
+              </div>
+
+              {/* Visibility */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Visibilidade</label>
+                <button
+                  type="button"
+                  onClick={() => setEditIsPublic(p => !p)}
+                  className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg border transition text-sm font-medium ${
+                    editIsPublic
+                      ? 'border-green-500/30 bg-green-500/10 text-green-400'
+                      : 'border-white/10 bg-white/5 text-zinc-400'
+                  }`}
+                >
+                  {editIsPublic ? <Globe size={16} /> : <Lock size={16} />}
+                  <div className="text-left">
+                    <span className="block">{editIsPublic ? 'Pública' : 'Privada'}</span>
+                    <span className="text-[11px] font-normal opacity-70">{editIsPublic ? 'Qualquer pessoa pode encontrar e ouvir' : 'Só você pode ver esta playlist'}</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setEditModalOpen(false)}
+                disabled={savingEdit}
+                className="px-5 py-2.5 rounded-full text-sm font-semibold text-white hover:scale-105 transition disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={savePlaylistDetails}
+                disabled={savingEdit || !editName.trim()}
+                className="px-5 py-2.5 bg-spotify-green hover:brightness-110 rounded-full text-sm font-bold text-black hover:scale-105 transition disabled:opacity-50"
+              >
+                {savingEdit ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─── Delete Confirmation Modal ─── */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/70" onClick={() => !deleting && setShowDeleteConfirm(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={() => !deleting && setShowDeleteConfirm(false)}>
           <div className="bg-[#282828] rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-white mb-2">Excluir playlist?</h3>
             <p className="text-sm text-zinc-400 mb-6">
@@ -491,11 +570,7 @@ export default function PlaylistDetails() {
                         ? <Pause size={14} fill="white" stroke="none" />
                         : <Play size={14} fill="white" stroke="none" className="ml-0.5" />
                     ) : isActive ? (
-                      <div className="flex items-end gap-0.5 h-3">
-                        <span className="w-0.75 bg-spotify-green rounded-full animate-pulse" style={{ height: '60%' }} />
-                        <span className="w-0.75 bg-spotify-green rounded-full animate-pulse" style={{ height: '100%', animationDelay: '0.15s' }} />
-                        <span className="w-0.75 bg-spotify-green rounded-full animate-pulse" style={{ height: '40%', animationDelay: '0.3s' }} />
-                      </div>
+                      <PlayingBars isPlaying={playing} height={12} />
                     ) : (
                       <span className="text-sm text-zinc-400 font-medium">{idx + 1}</span>
                     )}
