@@ -22,6 +22,8 @@ export const usePlayerStore = create((set, get) => ({
   })(),
   isPlaying: false,
   isQueueOpen: false,
+  isLyricsOpen: false,
+  currentTime: 0,
   volume: (() => {
     try {
       const saved = localStorage.getItem('ys_volume')
@@ -45,7 +47,11 @@ export const usePlayerStore = create((set, get) => ({
   },
 
   toggleQueue: () => {
-    set((state) => ({ isQueueOpen: !state.isQueueOpen }))
+    set((state) => ({ isQueueOpen: !state.isQueueOpen, isLyricsOpen: false }))
+  },
+
+  toggleLyrics: () => {
+    set((state) => ({ isLyricsOpen: !state.isLyricsOpen, isQueueOpen: false }))
   },
 
   next: () => {
@@ -73,6 +79,8 @@ export const usePlayerStore = create((set, get) => ({
       set({ currentSong: prevSong, isPlaying: true })
     }
   },
+
+  setCurrentTime: (t) => set({ currentTime: t }),
 
   setVolume: (volume) => {
     try { localStorage.setItem('ys_volume', volume) } catch {}

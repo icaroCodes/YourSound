@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { usePlayerStore } from '../store/usePlayerStore'
 import { useLikeStore } from '../store/useLikeStore'
+import { audioManager } from '../lib/audioRef'
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Shuffle, Repeat, Mic2, ListMusic, MonitorSpeaker, Maximize2, Heart, PictureInPicture2, X } from 'lucide-react'
 
 export default function Player() {
-  const { currentSong, isPlaying, togglePlay, next, previous, volume, setVolume, queue, playSong, isQueueOpen, toggleQueue } = usePlayerStore()
+  const { currentSong, isPlaying, togglePlay, next, previous, volume, setVolume, queue, playSong, isQueueOpen, toggleQueue, isLyricsOpen, toggleLyrics } = usePlayerStore()
   const { isLiked, toggleLike } = useLikeStore()
   const audioRef = useRef(null)
   const fadeInterval = useRef(null)
@@ -20,6 +21,12 @@ export default function Player() {
 
   const currentIndex = queue?.findIndex(s => s.id === currentSong?.id) ?? -1
   const nextSongs = currentIndex >= 0 && queue ? queue.slice(currentIndex + 1, currentIndex + 11) : []
+
+  // Share audio element for direct access (Lyrics, etc.)
+  useEffect(() => {
+    audioManager.element = audioRef.current
+    return () => { audioManager.element = null }
+  }, [])
 
   // --- Handlers para Reprodução com Fade (Suavidade) ---
   useEffect(() => {
@@ -302,7 +309,13 @@ export default function Player() {
 
       {/* Right: Volume + Extras */}
       <div className="w-[30%] min-w-[180px] flex items-center justify-end gap-3 text-zinc-400 relative">
-        <button className="hover:text-white transition hidden md:block"><Mic2 size={16} /></button>
+        <button
+          onClick={toggleLyrics}
+          className={`transition hidden md:block ${isLyricsOpen ? 'text-spotify-green' : 'hover:text-white'}`}
+          title="Letras"
+        >
+          <Mic2 size={16} />
+        </button>
         <button 
           onClick={toggleQueue}
           className={`transition hidden md:block ${isQueueOpen ? 'text-spotify-green' : 'hover:text-white'}`}
