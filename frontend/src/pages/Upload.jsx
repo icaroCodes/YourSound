@@ -11,6 +11,8 @@ export default function Upload() {
   const [audioFile, setAudioFile] = useState(null)
   const [coverFile, setCoverFile] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [useLink, setUseLink] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
   const [message, setMessage] = useState({ type: '', text: '' })
   
   const audioInputRef = useRef(null)
@@ -29,8 +31,14 @@ export default function Upload() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!audioFile) {
+    
+    if (!useLink && !audioFile) {
       setMessage({ type: 'error', text: 'Selecione um arquivo de áudio.' })
+      return
+    }
+
+    if (useLink && !linkUrl) {
+      setMessage({ type: 'error', text: 'Insira o link do vídeo.' })
       return
     }
 
@@ -38,13 +46,19 @@ export default function Upload() {
     setMessage({ type: '', text: '' })
 
     try {
-      const result = await api.uploadSong({
+      const payload = {
         title,
         artist,
         isPublic,
-        audioFile,
         coverFile
-      })
+      }
+
+      let result;
+      if (useLink) {
+        result = await api.uploadSongFromLink({ ...payload, url: linkUrl })
+      } else {
+        result = await api.uploadSong({ ...payload, audioFile })
+      }
 
       setMessage({ type: 'success', text: result.message })
       setTitle('')
@@ -52,6 +66,7 @@ export default function Upload() {
       setIsPublic(false)
       setAudioFile(null)
       setCoverFile(null)
+      setLinkUrl('')
       if (audioInputRef.current) audioInputRef.current.value = ''
       if (coverInputRef.current) coverInputRef.current.value = ''
     } catch (err) {
@@ -126,46 +141,83 @@ export default function Upload() {
             </div>
           </div>
 
-          {/* File Upload Section */}
-          <div className="space-y-4">
-            {/* Audio Upload */}
-            <div className="relative h-full">
-              <input 
-                ref={audioInputRef}
-                type="file" accept="audio/*" required onChange={handleAudioChange}
-                className="hidden"
-              />
-              <div 
-                onClick={() => audioInputRef.current?.click()}
-                className={`h-full min-h-[220px] rounded-3xl border border-dashed flex flex-col items-center justify-center gap-4 transition-all cursor-pointer ${
-                  audioFile 
-                    ? 'bg-indigo-500/5 border-indigo-500/40 text-indigo-400' 
-                    : 'bg-white/[0.02] border-white/10 text-zinc-500 hover:bg-white/[0.04] hover:border-white/20'
-                }`}
+          {/* Mode Toggle & File/Link Section */}
+          <div className="space-y-6">
+            <div className="flex bg-white/[0.03] p-1 rounded-2xl border border-white/5">
+              <button
+                type="button"
+                onClick={() => setUseLink(false)}
+                className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${!useLink ? 'bg-white text-black shadow-lg' : 'text-zinc-500 hover:text-white'}`}
               >
-                {audioFile ? (
-                  <>
-                    <div className="w-14 h-14 rounded-2xl bg-indigo-500/20 flex items-center justify-center">
-                      <Music4 size={28} className="text-indigo-400" />
-                    </div>
-                    <div className="text-center px-4">
-                      <p className="text-indigo-200 font-semibold truncate max-w-[200px]">{audioFile.name}</p>
-                      <p className="text-[10px] uppercase tracking-wider opacity-60">Toque para alterar</p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <UploadIcon size={28} />
-                    </div>
-                    <div className="text-center">
-                      <p className="font-semibold text-zinc-300">Carregar Áudio</p>
-                      <p className="text-[11px] opacity-60">Arraste ou clique para selecionar (MP3, WAV)</p>
-                    </div>
-                  </>
-                )}
-              </div>
+                Arquivo Local
+              </button>
+              <button
+                type="button"
+                onClick={() => setUseLink(true)}
+                className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${useLink ? 'bg-white text-black shadow-lg' : 'text-zinc-500 hover:text-white'}`}
+              >
+                Link (YT / TikTok)
+              </button>
             </div>
+
+            {useLink ? (
+              <div className="group animate-in slide-in-from-right-4 duration-300">
+                <label className="block text-[11px] uppercase tracking-widest font-bold text-zinc-500 mb-2 px-1 group-focus-within:text-indigo-400 transition-colors">
+                  Link do Vídeo
+                </label>
+                <div className="relative">
+                  <input 
+                    type="url" required value={linkUrl} onChange={e => setLinkUrl(e.target.value)}
+                    className="w-full px-5 py-6 bg-white/[0.03] border border-white/5 rounded-2xl text-white text-lg placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all hover:bg-white/[0.05]"
+                    placeholder="https://www.youtube.com/watch?v=... ou TikTok"
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 bg-white/5 px-3 py-1 rounded-lg border border-white/5 pointer-events-none uppercase tracking-tighter">
+                    Auto-download
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-zinc-500 px-1 italic">
+                  O áudio será extraído e processado automaticamente.
+                </p>
+              </div>
+            ) : (
+              <div className="relative h-full animate-in slide-in-from-left-4 duration-300">
+                <input 
+                  ref={audioInputRef}
+                  type="file" accept="audio/*" required onChange={handleAudioChange}
+                  className="hidden"
+                />
+                <div 
+                  onClick={() => audioInputRef.current?.click()}
+                  className={`h-full min-h-[200px] rounded-3xl border border-dashed flex flex-col items-center justify-center gap-4 transition-all cursor-pointer ${
+                    audioFile 
+                      ? 'bg-indigo-500/5 border-indigo-500/40 text-indigo-400' 
+                      : 'bg-white/[0.02] border-white/10 text-zinc-500 hover:bg-white/[0.04] hover:border-white/20'
+                  }`}
+                >
+                  {audioFile ? (
+                    <>
+                      <div className="w-14 h-14 rounded-2xl bg-indigo-500/20 flex items-center justify-center">
+                        <Music4 size={28} className="text-indigo-400" />
+                      </div>
+                      <div className="text-center px-4">
+                        <p className="text-indigo-200 font-semibold truncate max-w-[200px]">{audioFile.name}</p>
+                        <p className="text-[10px] uppercase tracking-wider opacity-60">Toque para alterar</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <UploadIcon size={28} />
+                      </div>
+                      <div className="text-center">
+                        <p className="font-semibold text-zinc-300">Carregar Áudio</p>
+                        <p className="text-[11px] opacity-60">Arraste ou clique para selecionar (MP3, WAV)</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

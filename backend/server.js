@@ -107,7 +107,7 @@ const globalLimiter = rateLimit({
 
 const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 50,
   message: { error: 'Limite de uploads atingido. Aguarde 15 minutos.' },
 });
 
