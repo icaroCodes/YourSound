@@ -279,7 +279,7 @@ export default function Upload() {
                 {loading ? (
                   <div className="flex items-center gap-2">
                     <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin"></div>
-                    <span>Fazendo Upload...</span>
+                    <span>{useLink ? 'Extraindo áudio...' : 'Enviando...'}</span>
                   </div>
                 ) : (
                   <>Enviar Música</>

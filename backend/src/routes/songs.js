@@ -1,17 +1,38 @@
 const express = require('express');
 const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const { execFile } = require('child_process');
 const router = express.Router();
-const ytdl = require('@distube/ytdl-core');
 const axios = require('axios');
+const ffmpegPath = require('ffmpeg-static');
 const { supabase } = require('../config/supabase');
 const { verifyAuth } = require('../middleware/auth');
-const { 
-  sanitizeString, 
-  ALLOWED_AUDIO_MIMES, 
-  ALLOWED_IMAGE_MIMES, 
-  MAX_AUDIO_SIZE, 
-  MAX_IMAGE_SIZE 
+const {
+  sanitizeString,
+  ALLOWED_AUDIO_MIMES,
+  ALLOWED_IMAGE_MIMES,
+  MAX_AUDIO_SIZE,
+  MAX_IMAGE_SIZE
 } = require('../middleware/validate');
+
+// yt-dlp binary — lives in backend/bin/
+const ytdlpBin = path.join(__dirname, '..', '..', 'bin', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
+
+/** Run yt-dlp with a hard timeout — never hangs */
+function runYtdlp(args, timeoutMs = 60000) {
+  return new Promise((resolve, reject) => {
+    const proc = execFile(ytdlpBin, args, { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) {
+        const msg = (stderr || err.message || '').split('\n').find(l => l.startsWith('ERROR:')) || 'Falha ao extrair áudio.';
+        reject(new Error(msg));
+      } else {
+        resolve(stdout);
+      }
+    });
+  });
+}
 
 // Multer config — files go to memory, NEVER to disk
 const upload = multer({
@@ -206,148 +227,179 @@ router.post(
 /**
  * POST /api/songs/from-link
  * Import a song from a YouTube or TikTok link.
+ *
+ * YouTube/TikTok URLs are NOT direct audio files — they cannot be played
+ * in a <audio> tag. The only reliable method is server-side extraction:
+ *   1. yt-dlp downloads the best audio stream
+ *   2. ffmpeg converts it to MP3
+ *   3. The MP3 buffer is uploaded to Supabase Storage
  */
 router.post(
   '/from-link',
   verifyAuth,
   upload.fields([{ name: 'cover', maxCount: 1 }]),
   async (req, res) => {
+    // Hard timeout — guarantee a response within 90s no matter what
+    const ROUTE_TIMEOUT = 90000;
+    let responded = false;
+    const safeJson = (status, body) => {
+      if (!responded) { responded = true; res.status(status).json(body); }
+    };
+    const timer = setTimeout(() => {
+      console.error('[FROM-LINK] TIMEOUT: 90s exceeded, forcing response.');
+      safeJson(504, { error: 'Importação demorou demais. Tente novamente.' });
+    }, ROUTE_TIMEOUT);
+
+    // Track temp files so we always clean up
+    const tempFiles = [];
+    const cleanup = () => {
+      clearTimeout(timer);
+      tempFiles.forEach(f => { try { fs.unlinkSync(f); } catch {} });
+    };
+
     try {
+      console.log('[FROM-LINK] === Handler entered ===');
+      console.log('[FROM-LINK] body keys:', Object.keys(req.body || {}));
+
       const title = sanitizeString(req.body.title, 100);
       const artist = sanitizeString(req.body.artist, 100);
       const isPublic = req.body.is_public === 'true';
       const url = req.body.url;
 
       if (!title || !artist || !url) {
-        return res.status(400).json({ error: 'Título, artista e URL são obrigatórios.' });
+        cleanup();
+        return safeJson(400, { error: 'Título, artista e URL são obrigatórios.' });
       }
 
-      console.log(`[FROM-LINK] 🚀 INICIANDO IMPORTAÇÃO: ${url}`);
+      const isSupported = /(?:youtube\.com|youtu\.be|tiktok\.com)/.test(url);
+      if (!isSupported) {
+        cleanup();
+        return safeJson(400, { error: 'Link não suportado. Use YouTube ou TikTok.' });
+      }
 
-      const processOperation = async () => {
-        const instances = [
-          'https://cobalt.api.unext.cc/api/json',
-          'https://cobalt-api.j0.dev/api/json',
-          'https://api.cobalt.tools/api/json'
-        ];
+      console.log(`[FROM-LINK] URL: ${url}`);
 
-        let cobaltData = null;
-        for (const instance of instances) {
-          try {
-            console.log(`[FROM-LINK] 🔍 Tentando API: ${instance}`);
-            const res = await axios.post(instance, {
-              url: url,
-              downloadMode: 'audio',
-              audioFormat: 'mp3'
-            }, {
-              headers: { 
-                'Accept': 'application/json', 
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0'
-              },
-              timeout: 5000 // 5 segundos por API
-            });
-            
-            if (res.data?.url) {
-              cobaltData = res.data;
-              console.log(`[FROM-LINK] ✅ Sucesso na API (${instance})`);
-              break;
-            }
-          } catch (e) {
-            console.warn(`[FROM-LINK] ⚠️  Falha na API (${instance}): ${e.message}`);
-          }
+      // ── Step 1: yt-dlp downloads best audio ──
+      const tmpId = `${req.userId}_${Date.now()}`;
+      const rawPath = path.join(os.tmpdir(), `${tmpId}_raw`);
+      const mp3Path = path.join(os.tmpdir(), `${tmpId}.mp3`);
+      tempFiles.push(rawPath, mp3Path);
+
+      console.log('[FROM-LINK] Step 1: yt-dlp extract...');
+      await runYtdlp([
+        url,
+        '-f', 'bestaudio/best',
+        '-o', rawPath,
+        '--no-playlist',
+        '--no-warnings',
+        '--max-filesize', '15M',
+      ], 45000);
+      console.log('[FROM-LINK] Step 1 done.');
+
+      // Find the actual file (yt-dlp may add an extension)
+      let actualRawPath = rawPath;
+      if (!fs.existsSync(rawPath)) {
+        const dir = os.tmpdir();
+        const match = fs.readdirSync(dir).find(f => f.startsWith(`${tmpId}_raw`));
+        if (match) {
+          actualRawPath = path.join(dir, match);
+          tempFiles.push(actualRawPath);
+        } else {
+          throw new Error('Falha ao extrair áudio. Tente outro link.');
         }
+      }
+      console.log('[FROM-LINK] Raw file:', actualRawPath);
 
-        let buffer;
-        if (cobaltData?.url) {
-          console.log('[FROM-LINK] 📥 Baixando áudio...');
-          const response = await axios.get(cobaltData.url, { responseType: 'arraybuffer', timeout: 30000 });
-          buffer = Buffer.from(response.data);
-        } else if (url.includes('tiktok.com')) {
-          console.log('[FROM-LINK] 🔄 Tentando TikWM...');
-          const tkRes = await axios.post('https://www.tikwm.com/api/', new URLSearchParams({ url }), { timeout: 10000 });
-          if (tkRes.data?.data?.music) {
-            const response = await axios.get(tkRes.data.data.music, { responseType: 'arraybuffer', timeout: 30000 });
-            buffer = Buffer.from(response.data);
-          }
-        }
-
-        if (!buffer || buffer.length === 0) {
-          throw new Error('Não foi possível extrair o áudio. Tente outro link.');
-        }
-
-        return buffer;
-      };
-
-      try {
-        const audioBuffer = await processOperation();
-
-        if (audioBuffer.length > MAX_AUDIO_SIZE) {
-          throw new Error('O áudio deste link é maior que 15MB. Tente um vídeo mais curto.');
-        }
-        
-        console.log(`[FROM-LINK] 📤 Enviando para Supabase Storage...`);
-        const audioPath = `${req.userId}/${Date.now()}_imported.mp3`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('songs')
-          .upload(audioPath, audioBuffer, {
-            contentType: 'audio/mpeg',
-            upsert: false
-          });
-
-        if (uploadError) throw new Error(`Erro no Storage: ${uploadError.message}`);
-
-        const { data: { publicUrl: audioUrl } } = supabase.storage
-          .from('songs')
-          .getPublicUrl(audioPath);
-
-        console.log('[FROM-LINK] 💾 Salvando registro no Banco de Dados...');
-
-        // --- Cover Logic (copied from original upload) ---
-        let coverUrl = null;
-        if (req.files?.cover?.[0]) {
-          const coverFile = req.files.cover[0];
-          const coverPath = `${req.userId}/${Date.now()}_${coverFile.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '')}`;
-          
-          await supabase.storage.from('covers').upload(coverPath, coverFile.buffer, {
-            contentType: coverFile.mimetype
-          });
-          
-          const { data: { publicUrl: cUrl } } = supabase.storage.from('covers').getPublicUrl(coverPath);
-          coverUrl = cUrl;
-        }
-
-        // --- Insert DB record ---
-        const { data: songData, error: dbError } = await supabase
-          .from('songs')
-          .insert({
-            title,
-            artist,
-            file_url: audioUrl,
-            cover_url: coverUrl,
-            user_id: req.userId,
-            is_public: isPublic,
-            status: isPublic ? 'pending' : 'approved'
-          })
-          .select()
-          .single();
-
-        if (dbError) throw dbError;
-
-        res.status(201).json({ 
-          message: isPublic 
-            ? 'Música importada! Aguardando aprovação.' 
-            : 'Música importada com sucesso!',
-          song: songData
+      // ── Step 2: ffmpeg converts to MP3 128kbps ──
+      console.log('[FROM-LINK] Step 2: ffmpeg convert...');
+      await new Promise((resolve, reject) => {
+        execFile(ffmpegPath, [
+          '-i', actualRawPath,
+          '-vn',
+          '-ar', '44100',
+          '-ac', '2',
+          '-b:a', '128k',
+          '-f', 'mp3',
+          '-y',
+          mp3Path
+        ], { timeout: 60000 }, (err, stdout, stderr) => {
+          if (err) reject(new Error('Falha na conversão do áudio.'));
+          else resolve();
         });
-      } catch (err) {
-        console.error('[FROM-LINK] ❌ Erro fatal:', err.message);
-        res.status(500).json({ error: err.message || 'Erro ao importar do link.' });
+      });
+      console.log('[FROM-LINK] Step 2 done.');
+
+      const audioBuffer = fs.readFileSync(mp3Path);
+      console.log(`[FROM-LINK] MP3 size: ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB`);
+
+      if (audioBuffer.length > MAX_AUDIO_SIZE) {
+        cleanup();
+        return safeJson(400, { error: 'O áudio é maior que 15MB. Tente um vídeo mais curto.' });
       }
-    } catch (outerErr) {
-      console.error('[FROM-LINK OUTER] ❌ Erro inesperado:', outerErr.message);
-      res.status(500).json({ error: 'Erro interno ao processar link.' });
+
+      // ── Step 3: Upload to Supabase Storage ──
+      console.log('[FROM-LINK] Step 3: Supabase upload...');
+      const audioStoragePath = `${req.userId}/${Date.now()}_imported.mp3`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('songs')
+        .upload(audioStoragePath, audioBuffer, {
+          contentType: 'audio/mpeg',
+          upsert: false
+        });
+
+      if (uploadError) throw new Error(`Erro no Storage: ${uploadError.message}`);
+
+      const { data: { publicUrl: audioUrl } } = supabase.storage
+        .from('songs')
+        .getPublicUrl(audioStoragePath);
+      console.log('[FROM-LINK] Step 3 done.');
+
+      // --- Cover ---
+      let coverUrl = null;
+      if (req.files?.cover?.[0]) {
+        console.log('[FROM-LINK] Uploading cover...');
+        const coverFile = req.files.cover[0];
+        const coverPath = `${req.userId}/${Date.now()}_${coverFile.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '')}`;
+
+        await supabase.storage.from('covers').upload(coverPath, coverFile.buffer, {
+          contentType: coverFile.mimetype
+        });
+
+        const { data: { publicUrl: cUrl } } = supabase.storage.from('covers').getPublicUrl(coverPath);
+        coverUrl = cUrl;
+      }
+
+      // --- Insert DB record ---
+      console.log('[FROM-LINK] Step 4: DB insert...');
+      const { data: songData, error: dbError } = await supabase
+        .from('songs')
+        .insert({
+          title,
+          artist,
+          file_url: audioUrl,
+          cover_url: coverUrl,
+          user_id: req.userId,
+          is_public: isPublic,
+          status: isPublic ? 'pending' : 'approved'
+        })
+        .select()
+        .single();
+
+      if (dbError) throw dbError;
+
+      cleanup();
+      console.log('[FROM-LINK] === SUCCESS ===');
+      safeJson(201, {
+        message: isPublic
+          ? 'Música importada! Aguardando aprovação.'
+          : 'Música importada com sucesso!',
+        song: songData
+      });
+    } catch (err) {
+      cleanup();
+      console.error('[FROM-LINK] === ERROR ===', err.message);
+      safeJson(500, { error: err.message || 'Erro ao importar do link.' });
     }
   }
 );

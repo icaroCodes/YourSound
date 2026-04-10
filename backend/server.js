@@ -113,6 +113,12 @@ const uploadLimiter = rateLimit({
 
 app.use(globalLimiter);
 
+// ── REQUEST LOGGER — see every request that reaches Express ──────────
+app.use((req, res, next) => {
+  console.log(`[REQ] ${req.method} ${req.url} (type: ${req.headers['content-type'] || 'none'})`);
+  next();
+});
+
 // ── Body parsing ─────────────────────────────────────────────────────
 const skipUploadPaths = (middleware) => (req, res, next) => {
   if (req.headers['content-type']?.includes('multipart/form-data')) {

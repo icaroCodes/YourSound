@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { useAuthStore } from '../store/useAuthStore';
 
 // Dev: '' (requests go through Vite proxy → localhost:3001, see vite.config.js)
 // Prod: VITE_API_URL must be set in Vercel env vars → Railway backend URL
@@ -6,16 +7,18 @@ const API_BASE = import.meta.env.VITE_API_URL || '';
 
 /**
  * Centralized API client.
- * 
+ *
  * Every request automatically attaches the user's Supabase access_token
  * in the Authorization header. The backend validates this token server-side
  * against Supabase Auth — it cannot be spoofed.
- * 
+ *
  * ALL mutations (create, update, delete, upload) MUST go through this client.
  * The frontend Supabase client should only be used for auth operations.
  */
-async function getAuthHeaders() {
-  const { data: { session } } = await supabase.auth.getSession();
+function getAuthHeaders() {
+  // Use the session already stored in Zustand — avoids calling
+  // supabase.auth.getSession() which can hang due to lock contention.
+  const session = useAuthStore.getState().session;
   if (!session?.access_token) {
     throw new Error('Sessão expirada. Faça login novamente.');
   }
@@ -35,19 +38,19 @@ async function handleResponse(response) {
 export const api = {
   // ── Songs ──────────────────────────────────
   async getSongs() {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/songs`, { headers });
     return handleResponse(res);
   },
 
   async searchSongs(query) {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/songs/search?q=${encodeURIComponent(query)}`, { headers });
     return handleResponse(res);
   },
 
   async uploadSong({ title, artist, isPublic, audioFile, coverFile }) {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     
     const formData = new FormData();
     formData.append('title', title);
@@ -67,8 +70,8 @@ export const api = {
   },
 
   async uploadSongFromLink({ title, artist, isPublic, url, coverFile }) {
-    const headers = await getAuthHeaders();
-    
+    const headers = getAuthHeaders();
+
     const formData = new FormData();
     formData.append('title', title);
     formData.append('artist', artist);
@@ -88,19 +91,19 @@ export const api = {
 
   // ── Playlists ──────────────────────────────
   async getPlaylists() {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/playlists`, { headers });
     return handleResponse(res);
   },
 
   async getPlaylist(id) {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/playlists/${id}`, { headers });
     return handleResponse(res);
   },
 
   async createPlaylist(name, is_public = false) {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/playlists`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
@@ -110,7 +113,7 @@ export const api = {
   },
 
   async updatePlaylist(playlistId, fields) {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/playlists/${playlistId}`, {
       method: 'PATCH',
       headers: { ...headers, 'Content-Type': 'application/json' },
@@ -120,7 +123,7 @@ export const api = {
   },
 
   async updatePlaylistCover(playlistId, imageFile) {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const formData = new FormData();
     formData.append('cover', imageFile);
     const res = await fetch(`${API_BASE}/api/playlists/${playlistId}/cover`, {
@@ -132,7 +135,7 @@ export const api = {
   },
 
   async deletePlaylist(id) {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/playlists/${id}`, {
       method: 'DELETE',
       headers
@@ -141,7 +144,7 @@ export const api = {
   },
 
   async addSongToPlaylist(playlistId, songId) {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/playlists/${playlistId}/songs`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
@@ -151,7 +154,7 @@ export const api = {
   },
 
   async removeSongFromPlaylist(playlistId, songEntryId) {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/playlists/${playlistId}/songs/${songEntryId}`, {
       method: 'DELETE',
       headers
@@ -161,13 +164,13 @@ export const api = {
 
   // ── Likes ──────────────────────────────────
   async getLikedSongs() {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/likes`, { headers });
     return handleResponse(res);
   },
 
   async likeSong(songId) {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/likes/${songId}`, {
       method: 'POST',
       headers
@@ -176,7 +179,7 @@ export const api = {
   },
 
   async unlikeSong(songId) {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/likes/${songId}`, {
       method: 'DELETE',
       headers
@@ -186,13 +189,13 @@ export const api = {
 
   // ── Admin ──────────────────────────────────
   async getPendingSongs() {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/admin/pending-songs`, { headers });
     return handleResponse(res);
   },
 
   async updateSongStatus(songId, status) {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/admin/songs/${songId}`, {
       method: 'PATCH',
       headers: { ...headers, 'Content-Type': 'application/json' },
@@ -202,19 +205,19 @@ export const api = {
   },
 
   async getAdminStats() {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/admin/stats`, { headers });
     return handleResponse(res);
   },
 
   async getAdminAllSongs() {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/admin/all-songs`, { headers });
     return handleResponse(res);
   },
 
   async editAdminSong(songId, data) {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/admin/songs/${songId}/edit`, {
       method: 'PATCH',
       headers: { ...headers, 'Content-Type': 'application/json' },
@@ -224,7 +227,7 @@ export const api = {
   },
 
   async deleteAdminSong(songId) {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/admin/songs/${songId}`, {
       method: 'DELETE',
       headers
@@ -234,7 +237,7 @@ export const api = {
 
   // ── User ───────────────────────────────────
   async deleteAccount() {
-    const headers = await getAuthHeaders();
+    const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/users/me`, {
       method: 'DELETE',
       headers
