@@ -12,6 +12,7 @@ export default function Navbar() {
   const { playSong } = usePlayerStore()
 
   const [query, setQuery] = useState('')
+  const [allSongs, setAllSongs] = useState([])
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -37,30 +38,34 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  // Debounced search
-  useEffect(() => {
-    if (query.length < 2) {
-      setResults([])
+  // Load all songs when search opens, filter locally
+  const loadAllSongs = async () => {
+    if (allSongs.length > 0) return // already loaded
+    setSearching(true)
+    try {
+      const data = await api.searchSongs('')
+      setAllSongs(data)
+      setResults(data)
+    } catch (err) {
+      console.error(err)
+    } finally {
       setSearching(false)
+    }
+  }
+
+  // Filter locally as user types
+  useEffect(() => {
+    if (!dropdownOpen) return
+    const q = query.trim().toLowerCase()
+    if (!q) {
+      setResults(allSongs)
       return
     }
-
-    setSearching(true)
-    clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const data = await api.searchSongs(query)
-        setResults(data)
-      } catch (err) {
-        console.error(err)
-        setResults([])
-      } finally {
-        setSearching(false)
-      }
-    }, 300)
-
-    return () => clearTimeout(debounceRef.current)
-  }, [query])
+    setResults(allSongs.filter(s =>
+      s.title.toLowerCase().includes(q) || s.artist.toLowerCase().includes(q)
+    ))
+    setSelectedIdx(-1)
+  }, [query, allSongs, dropdownOpen])
 
   const handleInputChange = (e) => {
     setQuery(e.target.value)
@@ -69,7 +74,8 @@ export default function Navbar() {
   }
 
   const handleFocus = () => {
-    if (query.length >= 2) setDropdownOpen(true)
+    setDropdownOpen(true)
+    loadAllSongs()
   }
 
   const clearSearch = () => {
@@ -180,7 +186,7 @@ export default function Navbar() {
         </div>
 
         {/* Search Dropdown */}
-        {dropdownOpen && query.length >= 2 && (
+        {dropdownOpen && (
           <div className="absolute top-full left-[52px] right-0 mt-2 bg-[#282828] rounded-lg shadow-2xl overflow-hidden z-50 max-h-[420px] flex flex-col">
             {/* Navigation hint */}
             <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 text-zinc-500 text-xs">
@@ -199,11 +205,11 @@ export default function Navbar() {
 
             {/* Results */}
             <div className="overflow-y-auto custom-scrollbar flex-1">
-              {searching && results.length === 0 ? (
+              {searching ? (
                 <div className="px-4 py-6 text-center text-zinc-500 text-sm">Buscando...</div>
-              ) : results.length === 0 && !searching ? (
+              ) : results.length === 0 ? (
                 <div className="px-4 py-6 text-center text-zinc-500 text-sm">
-                  Nenhum resultado para "{query}"
+                  {query ? `Nenhum resultado para "${query}"` : 'Nenhuma música encontrada'}
                 </div>
               ) : (
                 results.map((song, idx) => (

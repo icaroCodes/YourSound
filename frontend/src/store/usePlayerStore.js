@@ -24,6 +24,7 @@ export const usePlayerStore = create((set, get) => ({
   isQueueOpen: false,
   isLyricsOpen: false,
   currentTime: 0,
+  repeatMode: 'off', // 'off' | 'all' | 'one'
   volume: (() => {
     try {
       const saved = localStorage.getItem('ys_volume')
@@ -55,16 +56,30 @@ export const usePlayerStore = create((set, get) => ({
   },
 
   next: () => {
-    const { currentSong, queue } = get()
+    const { currentSong, queue, repeatMode } = get()
     if (!currentSong || queue.length === 0) return
 
     const currentIndex = queue.findIndex(s => s.id === currentSong.id)
+    let nextSong = null
+
     if (currentIndex >= 0 && currentIndex < queue.length - 1) {
-      const nextSong = queue[currentIndex + 1]
+      nextSong = queue[currentIndex + 1]
+    } else if (repeatMode === 'all' && queue.length > 0) {
+      // Last song ended — loop back to first
+      nextSong = queue[0]
+    }
+
+    if (nextSong) {
       try { localStorage.setItem('ys_current_time', '0') } catch {}
       saveSession(nextSong, queue)
       set({ currentSong: nextSong, isPlaying: true })
     }
+  },
+
+  toggleRepeat: () => {
+    set(state => ({
+      repeatMode: state.repeatMode === 'off' ? 'all' : state.repeatMode === 'all' ? 'one' : 'off'
+    }))
   },
 
   previous: () => {
@@ -85,6 +100,12 @@ export const usePlayerStore = create((set, get) => ({
   setVolume: (volume) => {
     try { localStorage.setItem('ys_volume', volume) } catch {}
     set({ volume })
+  },
+
+  updateQueue: (newQueue) => {
+    const { currentSong } = get()
+    saveSession(currentSong, newQueue)
+    set({ queue: newQueue })
   },
 
   clearPlayer: () => {

@@ -1,4 +1,3 @@
-import { supabase } from './supabase';
 import { useAuthStore } from '../store/useAuthStore';
 
 // Dev: '' (requests go through Vite proxy → localhost:3001, see vite.config.js)
@@ -16,15 +15,29 @@ const API_BASE = import.meta.env.VITE_API_URL || '';
  * The frontend Supabase client should only be used for auth operations.
  */
 function getAuthHeaders() {
-  // Use the session already stored in Zustand — avoids calling
-  // supabase.auth.getSession() which can hang due to lock contention.
-  const session = useAuthStore.getState().session;
-  if (!session?.access_token) {
-    throw new Error('Sessão expirada. Faça login novamente.');
+  // 1. Try Zustand store first (fastest path, kept in sync via onAuthStateChange)
+  const storeSession = useAuthStore.getState().session;
+  if (storeSession?.access_token) {
+    return { 'Authorization': `Bearer ${storeSession.access_token}` };
   }
-  return {
-    'Authorization': `Bearer ${session.access_token}`
-  };
+
+  // 2. Fallback: read directly from Supabase localStorage key.
+  //    Supabase JS always persists the session here, so this works even when
+  //    getSession() hangs due to token-refresh lock contention.
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+    const projectRef = supabaseUrl.match(/https?:\/\/([^.]+)/)?.[1];
+    if (projectRef) {
+      const raw = localStorage.getItem(`sb-${projectRef}-auth-token`);
+      if (raw) {
+        const stored = JSON.parse(raw);
+        const token = stored?.access_token;
+        if (token) return { 'Authorization': `Bearer ${token}` };
+      }
+    }
+  } catch { /* ignore parse errors */ }
+
+  throw new Error('Sessão expirada. Faça login novamente.');
 }
 
 async function handleResponse(response) {
@@ -191,6 +204,16 @@ export const api = {
   async getPendingSongs() {
     const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/admin/pending-songs`, { headers });
+    return handleResponse(res);
+  },
+
+  async updateSongDuration(songId, duration) {
+    const headers = getAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/songs/${songId}/duration`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ duration })
+    });
     return handleResponse(res);
   },
 

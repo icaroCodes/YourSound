@@ -3,11 +3,12 @@ import { createPortal } from 'react-dom'
 import { usePlayerStore } from '../store/usePlayerStore'
 import { useLikeStore } from '../store/useLikeStore'
 import { audioManager } from '../lib/audioRef'
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Shuffle, Repeat, Mic2, ListMusic, MonitorSpeaker, Maximize2, Heart, PictureInPicture2, X } from 'lucide-react'
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Shuffle, Repeat, Mic2, ListMusic, MonitorSpeaker, Maximize2, Heart, PictureInPicture2, X, PlusCircle } from 'lucide-react'
+import AddToPlaylistModal from './AddToPlaylistModal'
 
 export default function Player() {
-  const { currentSong, isPlaying, togglePlay, next, previous, volume, setVolume, queue, playSong, isQueueOpen, toggleQueue, isLyricsOpen, toggleLyrics } = usePlayerStore()
-  const { isLiked, toggleLike } = useLikeStore()
+  const { currentSong, isPlaying, togglePlay, next, previous, volume, setVolume, queue, playSong, isQueueOpen, toggleQueue, isLyricsOpen, toggleLyrics, repeatMode, toggleRepeat } = usePlayerStore()
+  const { isLiked } = useLikeStore()
   const audioRef = useRef(null)
   const fadeInterval = useRef(null)
   const isInitialLoadRef = useRef(true)
@@ -18,6 +19,7 @@ export default function Player() {
   const [isSeeking, setIsSeeking] = useState(false)
   const [pipWindow, setPipWindow] = useState(null)
   const [previousVolume, setPreviousVolume] = useState(1)
+  const [addModalOpen, setAddModalOpen] = useState(false)
 
   const currentIndex = queue?.findIndex(s => s.id === currentSong?.id) ?? -1
   const nextSongs = currentIndex >= 0 && queue ? queue.slice(currentIndex + 1, currentIndex + 11) : []
@@ -27,6 +29,30 @@ export default function Player() {
     audioManager.element = audioRef.current
     return () => { audioManager.element = null }
   }, [])
+
+  // Media Session API — iOS lock screen / Control Center controls
+  useEffect(() => {
+    if (!currentSong || !('mediaSession' in navigator)) return
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: currentSong.title,
+      artist: currentSong.artist,
+      artwork: currentSong.cover_url
+        ? [{ src: currentSong.cover_url, sizes: '512x512', type: 'image/jpeg' }]
+        : [],
+    })
+
+    navigator.mediaSession.setActionHandler('play', () => { if (!isPlaying) togglePlay() })
+    navigator.mediaSession.setActionHandler('pause', () => { if (isPlaying) togglePlay() })
+    navigator.mediaSession.setActionHandler('previoustrack', previous)
+    navigator.mediaSession.setActionHandler('nexttrack', next)
+
+    return () => {
+      ['play', 'pause', 'previoustrack', 'nexttrack'].forEach(action => {
+        try { navigator.mediaSession.setActionHandler(action, null) } catch {}
+      })
+    }
+  }, [currentSong, isPlaying]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Handlers para Reprodução com Fade (Suavidade) ---
   useEffect(() => {
@@ -44,23 +70,29 @@ export default function Player() {
       audio.volume = Math.pow(volume, 2)
       audio.play().catch(e => console.error("Playback error:", e))
     } else {
-      // Fade out suave - 250ms de decaimento
-      const fadeStep = audio.volume / 15
-      
-      if (audio.volume > 0.01) {
+      // iOS Safari ignora audio.volume (read-only), então o fade nunca chegaria
+      // a 0 e audio.pause() nunca seria chamado. Nesse caso, pausa direto.
+      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+      if (isIOS || audio.volume <= 0.01) {
+        audio.pause()
+      } else {
+        // Fade out suave - 250ms de decaimento (apenas desktop)
+        const startVol = audio.volume
+        const fadeStep = startVol / 15
+        let iterations = 0
         fadeInterval.current = setInterval(() => {
-          if (audio) {
-            let nextVol = audio.volume - fadeStep
-            if (nextVol <= 0.01) {
-              clearInterval(fadeInterval.current)
-              audio.pause()
-            } else {
-              audio.volume = nextVol
-            }
+          if (!audio) { clearInterval(fadeInterval.current); return }
+          iterations++
+          let nextVol = audio.volume - fadeStep
+          // Se o volume não está mudando (iOS ignorando) ou chegou no fim, pausa
+          if (nextVol <= 0.01 || iterations > 20) {
+            clearInterval(fadeInterval.current)
+            audio.pause()
+            audio.volume = Math.pow(volume, 2)
+          } else {
+            audio.volume = nextVol
           }
         }, 15)
-      } else {
-        audio.pause()
       }
     }
 
@@ -78,7 +110,14 @@ export default function Player() {
 
   const handleLoadedData = () => {
     if (audioRef.current) {
-      setDuration(audioRef.current.duration)
+      const dur = audioRef.current.duration
+      setDuration(dur)
+      // Persist duration to DB for songs that don't have it yet
+      if (currentSong && (!currentSong.duration) && dur && isFinite(dur)) {
+        import('../lib/api').then(({ api }) => {
+          api.updateSongDuration?.(currentSong.id, dur).catch(() => {})
+        })
+      }
     }
     if (isInitialLoadRef.current) {
       isInitialLoadRef.current = false
@@ -241,7 +280,14 @@ export default function Player() {
         src={currentSong.file_url}
         onLoadedData={handleLoadedData}
         onTimeUpdate={handleTimeUpdate}
-        onEnded={next}
+        onEnded={() => {
+          if (repeatMode === 'one' && audioRef.current) {
+            audioRef.current.currentTime = 0
+            audioRef.current.play().catch(() => {})
+          } else {
+            next()
+          }
+        }}
         autoPlay={isPlaying}
       />
 
@@ -259,16 +305,31 @@ export default function Player() {
           <span className="text-xs text-zinc-400 hover:text-white hover:underline cursor-pointer truncate">{currentSong.artist}</span>
         </div>
         <button
-          onClick={() => toggleLike(currentSong)}
-          className={`hidden sm:block hover:scale-110 transition-transform shrink-0 ${isLiked(currentSong.id) ? 'text-spotify-green' : 'text-zinc-400 hover:text-white'}`}
+          onClick={() => setAddModalOpen(true)}
+          className="hidden sm:block hover:scale-110 transition-transform shrink-0 text-zinc-400 hover:text-white"
+          title="Adicionar à playlist"
         >
-          <Heart size={16} fill={isLiked(currentSong.id) ? 'currentColor' : 'none'} />
+          <PlusCircle size={18} />
         </button>
       </div>
 
+      {/* Add to Playlist Modal */}
+      {addModalOpen && (
+        <AddToPlaylistModal song={currentSong} onClose={() => setAddModalOpen(false)} />
+      )}
+
       {/* Center: Controls + Progress */}
       <div className="w-[40%] max-w-[722px] flex flex-col items-center gap-1">
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={toggleRepeat}
+            title={repeatMode === 'off' ? 'Repetir' : repeatMode === 'all' ? 'Repetir tudo' : 'Repetir uma'}
+            className={`relative transition ${repeatMode !== 'off' ? 'text-spotify-green' : 'text-zinc-400 hover:text-white'}`}
+          >
+            {repeatMode === 'one'
+              ? <span className="relative"><Repeat size={16} /><span className="absolute -top-1 -right-1 text-[8px] font-bold leading-none">1</span></span>
+              : <Repeat size={16} />}
+          </button>
           <button onClick={previous} className="text-zinc-400 hover:text-white transition"><SkipBack size={18} fill="currentColor" /></button>
           <button
             onClick={togglePlay}
@@ -277,6 +338,7 @@ export default function Player() {
             {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
           </button>
           <button onClick={next} className="text-zinc-400 hover:text-white transition"><SkipForward size={18} fill="currentColor" /></button>
+          <div className="w-4" />
         </div>
 
         <div className="w-full flex items-center gap-2 text-[11px] text-zinc-400 font-medium">
@@ -382,8 +444,8 @@ export default function Player() {
                 <h3 className="font-bold text-[22px] truncate hover:underline cursor-pointer tracking-tight leading-tight mb-1">{currentSong.title}</h3>
                 <p className="text-zinc-400 text-[15px] truncate hover:underline cursor-pointer hover:text-white transition-colors">{currentSong.artist}</p>
               </div>
-              <button onClick={() => toggleLike(currentSong)} className={`shrink-0 hover:scale-110 transition-transform ${isLiked(currentSong.id) ? 'text-spotify-green' : 'text-zinc-400 hover:text-white'}`}>
-                <Heart size={26} fill={isLiked(currentSong.id) ? 'currentColor' : 'none'} />
+              <button onClick={() => setAddModalOpen(true)} className="shrink-0 hover:scale-110 transition-transform text-zinc-400 hover:text-white">
+                <PlusCircle size={26} />
               </button>
             </div>
           </div>

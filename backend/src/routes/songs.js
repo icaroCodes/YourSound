@@ -7,6 +7,17 @@ const { execFile } = require('child_process');
 const router = express.Router();
 const axios = require('axios');
 const ffmpegPath = require('ffmpeg-static');
+const mm = require('music-metadata');
+
+// Extract duration in seconds from an audio Buffer
+async function getDuration(buffer, mimeType = 'audio/mpeg') {
+  try {
+    const meta = await mm.parseBuffer(buffer, { mimeType }, { duration: true });
+    return meta.format.duration ?? null;
+  } catch {
+    return null;
+  }
+}
 const { supabase } = require('../config/supabase');
 const { verifyAuth } = require('../middleware/auth');
 const {
@@ -42,6 +53,26 @@ const upload = multer({
 
 router.get('/ping', (req, res) => res.send('pong'));
 
+// PATCH /api/songs/:id/duration — backfill duration for existing songs (called by player on load)
+router.patch('/:id/duration', verifyAuth, async (req, res) => {
+  try {
+    const { duration } = req.body;
+    if (!duration || typeof duration !== 'number' || duration <= 0) {
+      return res.status(400).json({ error: 'Duração inválida.' });
+    }
+    const { error } = await supabase
+      .from('songs')
+      .update({ duration })
+      .eq('id', req.params.id)
+      .eq('user_id', req.userId) // only owner can update
+      .is('duration', null);     // only backfill if not set yet
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /**
  * GET /api/songs
  * Returns songs the authenticated user is allowed to see:
@@ -72,18 +103,20 @@ router.get('/', verifyAuth, async (req, res) => {
  */
 router.get('/search', verifyAuth, async (req, res) => {
   try {
-    const q = sanitizeString(req.query.q, 100);
-    if (q.length < 2) {
-      return res.json([]);
-    }
+    const q = sanitizeString(req.query.q || '', 100);
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('songs')
       .select('*')
       .or(`and(is_public.eq.true,status.eq.approved),user_id.eq.${req.userId}`)
-      .ilike('title', `%${q}%`)
-      .limit(10);
+      .order('created_at', { ascending: false })
+      .limit(50);
 
+    if (q.length >= 2) {
+      query = query.ilike('title', `%${q}%`);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     res.json(data || []);
   } catch (err) {
@@ -191,8 +224,11 @@ router.post(
         coverUrl = cUrl;
       }
 
+      // --- Extract duration ---
+      const duration = await getDuration(audioFile.buffer, audioFile.mimetype);
+
       // --- Insert DB record ---
-      // SECURITY: user_id comes from req.userId (server-verified), 
+      // SECURITY: user_id comes from req.userId (server-verified),
       // status is forced server-side — client CANNOT set themselves as 'approved'
       const { data: songData, error: dbError } = await supabase
         .from('songs')
@@ -203,7 +239,8 @@ router.post(
           cover_url: coverUrl,
           user_id: req.userId,
           is_public: isPublic,
-          status: isPublic ? 'pending' : 'approved'
+          status: isPublic ? 'pending' : 'approved',
+          ...(duration != null ? { duration } : {})
         })
         .select()
         .single();
@@ -337,6 +374,8 @@ router.post(
         return safeJson(400, { error: 'O áudio é maior que 15MB. Tente um vídeo mais curto.' });
       }
 
+      const duration = await getDuration(audioBuffer, 'audio/mpeg');
+
       // ── Step 3: Upload to Supabase Storage ──
       console.log('[FROM-LINK] Step 3: Supabase upload...');
       const audioStoragePath = `${req.userId}/${Date.now()}_imported.mp3`;
@@ -381,7 +420,8 @@ router.post(
           cover_url: coverUrl,
           user_id: req.userId,
           is_public: isPublic,
-          status: isPublic ? 'pending' : 'approved'
+          status: isPublic ? 'pending' : 'approved',
+          ...(duration != null ? { duration } : {})
         })
         .select()
         .single();
