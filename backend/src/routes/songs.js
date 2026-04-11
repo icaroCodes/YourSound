@@ -7,11 +7,20 @@ const { execFile } = require('child_process');
 const router = express.Router();
 const axios = require('axios');
 const ffmpegPath = require('ffmpeg-static');
-const mm = require('music-metadata');
+
+// music-metadata v11+ is ESM-only — must use dynamic import() in CommonJS
+let _mm = null;
+async function getMM() {
+  if (!_mm) {
+    _mm = await import('music-metadata');
+  }
+  return _mm;
+}
 
 // Extract duration in seconds from an audio Buffer
 async function getDuration(buffer, mimeType = 'audio/mpeg') {
   try {
+    const mm = await getMM();
     const meta = await mm.parseBuffer(buffer, { mimeType }, { duration: true });
     return meta.format.duration ?? null;
   } catch {
