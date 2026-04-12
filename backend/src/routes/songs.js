@@ -7,7 +7,6 @@ const { execFile, spawn } = require('child_process');
 const router = express.Router();
 const axios = require('axios');
 const ffmpegPath = require('ffmpeg-static');
-const ytdl = require('@distube/ytdl-core');
 
 // music-metadata v11+ is ESM-only — must use dynamic import() in CommonJS
 let _mm = null;
@@ -535,68 +534,86 @@ router.patch('/:id/subtitle', verifyAuth, async (req, res) => {
 
 /**
  * GET /api/songs/proxy-stream
- * Proxies media streams from YouTube/TikTok using ytdl-core or yt-dlp.
+ * Proxies video from YouTube/TikTok via yt-dlp.
+ * Uses yt-dlp for BOTH YouTube and TikTok — ytdl-core is unreliable
+ * on cloud servers (Railway) because YouTube blocks their IPs.
  */
 router.get('/proxy-stream', async (req, res) => {
-  const { url, type = 'video', start = 0 } = req.query;
+  const { url, type = 'video' } = req.query;
 
   if (!url) return res.status(400).send('URL is required');
 
-  console.log(`[PROXY-STREAM] Starting stream: ${url} (${type}) at ${start}s`);
+  const isSupported = /youtube\.com|youtu\.be|tiktok\.com/.test(url);
+  if (!isSupported) return res.status(400).send('URL not supported');
 
-  try {
-    const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+  console.log(`[PROXY-STREAM] url=${url} type=${type}`);
 
-    if (isYouTube) {
-      // 1. YouTube specialized streaming
-      const stream = ytdl(url, {
-        filter: type === 'video' ? 'videoandaudio' : 'audioonly',
-        quality: type === 'video' ? '18' /* 360p mp4 */ : 'highestaudio',
-        begin: start > 0 ? `${start}s` : undefined, // ytdl-core supports begin
-        highWaterMark: 1 << 25
-      });
+  // Download to a temp file first so we can serve it with proper Content-Length
+  // (enabling range requests and allowing the browser to seek freely)
+  const tmpPath = path.join(os.tmpdir(), `ys_proxy_${Date.now()}_${Math.random().toString(36).slice(2)}.mp4`);
 
-      stream.on('error', (err) => {
-        console.error('[PROXY-STREAM] YTDL Error:', err.message);
-        if (!res.headersSent) res.status(500).send('Stream error');
-      });
+  const args = [
+    url,
+    '-f', type === 'video' ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best' : 'bestaudio/best',
+    '--merge-output-format', 'mp4',
+    '-o', tmpPath,
+    '--no-playlist',
+    '--no-warnings',
+    '--quiet',
+  ];
 
-      res.setHeader('Content-Type', type === 'video' ? 'video/mp4' : 'audio/mp4');
-      stream.pipe(res);
-    } else {
-      // 2. Others (TikTok, etc.) via yt-dlp
-      res.setHeader('Content-Type', type === 'video' ? 'video/mp4' : 'audio/mpeg');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Transfer-Encoding', 'chunked');
+  const proc = spawn(ytdlpBin, args);
 
-      // Use --external-downloader ffmpeg to seek in the stream
-      const args = [
-        url,
-        '-f', type === 'video' ? 'best[ext=mp4]/best' : 'bestaudio/best',
-        '-o', '-',
-        '--no-playlist',
-        '--no-warnings',
-        '--quiet'
-      ];
+  let stderr = '';
+  proc.stderr?.on('data', d => { stderr += d.toString() });
 
-      if (start > 0) {
-        // Simple seek using ffmpeg as external downloader
-        args.push('--external-downloader', 'ffmpeg');
-        args.push('--external-downloader-args', `ffmpeg:-ss ${start}`);
-      }
+  proc.on('error', (err) => {
+    console.error('[PROXY-STREAM] spawn error:', err.message);
+    if (!res.headersSent) res.status(500).send('yt-dlp not available');
+  });
 
-      const ytProcess = spawn(ytdlpBin, args);
-      ytProcess.stdout.pipe(res);
-      ytProcess.on('error', (err) => {
-        console.error('[PROXY-STREAM] Process error:', err);
-        if (!res.headersSent) res.status(500).send('Stream error');
-      });
-      req.on('close', () => ytProcess.kill('SIGTERM'));
+  proc.on('close', (code) => {
+    if (code !== 0) {
+      console.error(`[PROXY-STREAM] yt-dlp exited ${code}: ${stderr.slice(0, 300)}`);
+      if (!res.headersSent) res.status(500).send('Download failed');
+      try { fs.unlinkSync(tmpPath) } catch {}
+      return;
     }
-  } catch (err) {
-    console.error('[PROXY-STREAM] Catch error:', err.message);
-    if (!res.headersSent) res.status(500).send('Failed');
-  }
+
+    // Serve the temp file with proper headers for range support
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    const stat = fs.statSync(tmpPath);
+    const total = stat.size;
+    const rangeHeader = req.headers.range;
+
+    if (rangeHeader) {
+      const [startStr, endStr] = rangeHeader.replace('bytes=', '').split('-');
+      const start = parseInt(startStr, 10);
+      const end = endStr ? parseInt(endStr, 10) : total - 1;
+      const chunkSize = end - start + 1;
+
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+      res.setHeader('Content-Length', chunkSize);
+
+      const fileStream = fs.createReadStream(tmpPath, { start, end });
+      fileStream.pipe(res);
+      fileStream.on('close', () => { try { fs.unlinkSync(tmpPath) } catch {} });
+    } else {
+      res.setHeader('Content-Length', total);
+      const fileStream = fs.createReadStream(tmpPath);
+      fileStream.pipe(res);
+      fileStream.on('close', () => { try { fs.unlinkSync(tmpPath) } catch {} });
+    }
+  });
+
+  // Clean up if client disconnects early
+  req.on('close', () => {
+    proc.kill('SIGTERM');
+    try { fs.unlinkSync(tmpPath) } catch {}
+  });
 });
 
 module.exports = router;

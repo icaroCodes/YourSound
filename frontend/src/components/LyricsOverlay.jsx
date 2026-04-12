@@ -91,39 +91,16 @@ export default function LyricsOverlay() {
     return () => { cancelled = true }
   }, [currentSong?.id, currentSong?.subtitle_mode])
 
-  // ── 2. Download video as blob for seekable playback ──
+  // ── 2. Set video URL (proxy supports range requests, browser can seek natively) ──
   useEffect(() => {
-    if (!isVideoMode || !videoUrl) return
-
-    let cancelled = false
-    const proxyUrl = `${API_BASE}/api/songs/proxy-stream?url=${encodeURIComponent(videoUrl)}&type=video`
+    if (!isVideoMode || !videoUrl) {
+      setVideoBlobUrl(null)
+      setVideoLoading(false)
+      return
+    }
 
     setVideoLoading(true)
-    setVideoBlobUrl(null)
-
-    fetch(proxyUrl)
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to fetch video')
-        return res.blob()
-      })
-      .then(blob => {
-        if (cancelled) return
-        const url = URL.createObjectURL(blob)
-        setVideoBlobUrl(url)
-        setVideoLoading(false)
-      })
-      .catch(err => {
-        console.error('[LyricsOverlay] Video download failed:', err)
-        if (!cancelled) setVideoLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-      setVideoBlobUrl(prev => {
-        if (prev) URL.revokeObjectURL(prev)
-        return null
-      })
-    }
+    setVideoBlobUrl(`${API_BASE}/api/songs/proxy-stream?url=${encodeURIComponent(videoUrl)}&type=video`)
   }, [isVideoMode, videoUrl])
 
   // ── 3. Audio ↔ Video sync via RAF + event listeners ──
@@ -333,7 +310,7 @@ export default function LyricsOverlay() {
               preload="auto"
               className="w-full h-full object-cover transition-opacity duration-700"
               style={{ opacity: 0 }}
-              onLoadedData={(e) => { e.target.style.opacity = '0.6' }}
+              onLoadedData={(e) => { e.target.style.opacity = '0.6'; setVideoLoading(false) }}
               onError={() => console.error('[LyricsOverlay] Video playback failed')}
             />
           )}
