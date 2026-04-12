@@ -310,8 +310,14 @@ export default function LyricsOverlay() {
               preload="auto"
               className="w-full h-full object-cover transition-opacity duration-700"
               style={{ opacity: 0 }}
-              onLoadedData={(e) => { e.target.style.opacity = '0.6'; setVideoLoading(false) }}
-              onError={() => console.error('[LyricsOverlay] Video playback failed')}
+              onLoadedData={(e) => { 
+                e.target.style.opacity = '0.6'; 
+                setVideoLoading(false); 
+              }}
+              onError={() => {
+                console.error('[LyricsOverlay] Video playback failed');
+                setVideoLoading(false);
+              }}
             />
           )}
           <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/20 to-black/70" />

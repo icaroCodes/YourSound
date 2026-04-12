@@ -543,68 +543,104 @@ router.patch('/:id/subtitle', verifyAuth, async (req, res) => {
 const proxyUrlCache = new Map();
 
 router.get('/proxy-stream', async (req, res) => {
-  const { url, type = 'video' } = req.query;
+  let { url, type = 'video' } = req.query;
 
   if (!url) return res.status(400).send('URL is required');
+  
+  // Handle case where url might be an array
+  if (Array.isArray(url)) url = url[0];
 
-  const isSupported = /youtube\.com|youtu\.be|tiktok\.com/.test(url);
-  if (!isSupported) return res.status(400).send('URL not supported');
-
-  const userAgentToUse = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-  // Define headers to forward to the CDN
-  // Hardcoded User-Agent matching yt-dlp guarantees the generated CDN signature matches!
-  const requestHeaders = {
-    'User-Agent': userAgentToUse,
-    'Referer': isSupported ? new URL(url).origin + '/' : 'https://www.youtube.com/',
-    'Origin': isSupported ? new URL(url).origin : 'https://www.youtube.com'
-  };
+  const cacheKey = `${url}_${type}`;
+  
+  // Forward Range header to support seeking in the browser
+  const requestHeaders = {};
   if (req.headers.range) {
     requestHeaders['Range'] = req.headers.range;
   }
 
-  const cacheKey = `${url}_${type}`;
-  
-  async function fetchDirectUrl() {
-    const format = type === 'video' ? 'best[height<=720][ext=mp4]/best[ext=mp4]/best' : 'bestaudio/best';
+  /**
+   * Helper: Extracts direct CDN URL and required headers (including cookies) via yt-dlp
+   */
+  async function fetchDirectData() {
+    const format = type === 'video' 
+      ? 'best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best' 
+      : 'bestaudio/best';
+      
     return new Promise((resolve, reject) => {
       execFile(ytdlpBin, [
-        '--get-url',
+        '-J',
         '-f', format,
         '--no-playlist',
-        '--user-agent', userAgentToUse,
+        '--no-check-certificates',
+        '--no-warnings',
         url
-      ], { maxBuffer: 1024 * 1024 }, (err, stdout) => {
-        if (err) return reject(err);
-        const lines = stdout.split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
-        if (lines.length > 0) resolve(lines[0]);
-        else reject(new Error('No URL found'));
+      ], { maxBuffer: 50 * 1024 * 1024 }, (err, stdout) => {
+        if (err) {
+          const errMsg = err.message || '';
+          if (errMsg.includes('403')) return reject(new Error('URL_FORBIDDEN'));
+          return reject(err);
+        }
+        try {
+          const data = JSON.parse(stdout);
+          const directUrl = data.url || data.requested_downloads?.[0]?.url;
+          if (!directUrl) return reject(new Error('No direct URL found'));
+          
+          // Combine extracted headers with cookies (critical for TikTok/YouTube)
+          const headers = { 
+            ...(data.http_headers || {}),
+            'User-Agent': data.http_headers?.['User-Agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
+          };
+
+          if (data.cookies) {
+            headers['Cookie'] = data.cookies;
+          } else if (data.requested_downloads?.[0]?.cookies) {
+             headers['Cookie'] = data.requested_downloads[0].cookies;
+          }
+          
+          resolve({
+            url: directUrl,
+            headers,
+            isTikTok: url.includes('tiktok.com')
+          });
+        } catch (e) {
+          reject(new Error('Failed to parse extraction result'));
+        }
       });
     });
   }
 
-  async function streamFromCdn(directUrl, isRetry = false) {
+  /**
+   * Helper: Streams content from the CDN URL with proper range support
+   */
+  async function streamFromSource(directData, isRetry = false) {
     try {
       const response = await axios({
         method: 'GET',
-        url: directUrl,
+        url: directData.url,
         responseType: 'stream',
-        headers: requestHeaders,
-        maxRedirects: 5
+        headers: {
+          ...directData.headers,
+          ...requestHeaders
+        },
+        timeout: 20000,
+        maxRedirects: 5,
+        validateStatus: (status) => (status >= 200 && status < 300) || status === 206
       });
 
+      // Forward status and essential headers
       res.status(response.status);
-
       const headersToProxy = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control'];
-      headersToProxy.forEach(header => {
-        if (response.headers[header]) {
-          res.setHeader(header, response.headers[header]);
-        }
+      headersToProxy.forEach(h => {
+        if (response.headers[h]) res.setHeader(h, response.headers[h]);
       });
 
-      // Prevent unhandled stream errors from crashing the Node.js process!
+      // Fallback content type for TikTok
+      if (directData.isTikTok && !res.getHeader('content-type')) {
+        res.setHeader('content-type', 'video/mp4');
+      }
+
+      // Safe piping with error handling
       response.data.on('error', (e) => {
-        // Ignorar erros de fechamento prematuro (normal quando o vídeo avança/pausa)
         if (e.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
           console.error('[PROXY-STREAM] Source stream error:', e.message);
         }
@@ -623,44 +659,103 @@ router.get('/proxy-stream', async (req, res) => {
       });
 
     } catch (err) {
-      // If the CDN link expired or was forbidden, evict cache and retry once
-      if (!isRetry && err.response && [403, 404, 410].includes(err.response.status)) {
-        console.log('[PROXY-STREAM] Cache expired/forbidden, retrying...');
+      // Automatic retry on potential link expiration
+      const status = err.response?.status;
+      if (!isRetry && (status === 403 || status === 404 || status === 410)) {
+        console.log(`[PROXY-STREAM] Detected ${status}, refreshing URL...`);
         proxyUrlCache.delete(cacheKey);
         try {
-          const newUrl = await fetchDirectUrl();
-          proxyUrlCache.set(cacheKey, newUrl);
-          // Expire in 2 hours
-          setTimeout(() => proxyUrlCache.delete(cacheKey), 2 * 60 * 60 * 1000);
-          return await streamFromCdn(newUrl, true);
+          const freshData = await fetchDirectData();
+          proxyUrlCache.set(cacheKey, freshData);
+          return await streamFromSource(freshData, true);
         } catch(retryErr) {
-          if (!res.headersSent) res.status(500).send('Proxy retry error');
+          if (!res.headersSent) res.status(500).send('Video extraction failed on retry');
           return;
         }
       }
       
-      console.error('[PROXY-STREAM] Streaming error:', err.message);
+      console.error('[PROXY-STREAM] Main stream error:', err.message);
       if (!res.headersSent) {
-        if (err.response) res.status(err.response.status).send('CDN error');
-        else res.status(500).send('Proxy error');
+        res.status(status || 500).send(err.message || 'Stream proxy error');
       }
     }
   }
 
-  let directUrl = proxyUrlCache.get(cacheKey);
+  // --- Start Execution ---
+  
+  // Special handling for TikTok: Buffer in memory for absolute reliability and seekability.
+  // TikToks are small, so buffering allows the browser to have the full file and seek correctly.
+  if (url.includes('tiktok.com')) {
+    let cached = proxyUrlCache.get(cacheKey);
+    if (cached && Buffer.isBuffer(cached)) {
+      res.setHeader('Content-Type', type === 'video' ? 'video/mp4' : 'audio/mpeg');
+      res.setHeader('Content-Length', cached.length);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      return res.send(cached);
+    }
 
-  if (!directUrl) {
     try {
-      directUrl = await fetchDirectUrl();
-      proxyUrlCache.set(cacheKey, directUrl);
-      setTimeout(() => proxyUrlCache.delete(cacheKey), 2 * 60 * 60 * 1000);
+      const format = type === 'video' ? 'best[height<=720][ext=mp4]/best' : 'bestaudio/best';
+      const buffer = await new Promise((resolve, reject) => {
+        const chunks = [];
+        const ytProc = spawn(ytdlpBin, [
+          url,
+          '-f', format,
+          '-o', '-',
+          '--no-playlist',
+          '--no-check-certificates',
+          '--no-warnings',
+          '--max-filesize', '20M', // Security limit
+          '--quiet'
+        ]);
+
+        ytProc.stdout.on('data', (c) => chunks.push(c));
+        
+        ytProc.on('close', (code) => {
+          if (code === 0) resolve(Buffer.concat(chunks));
+          else reject(new Error(`yt-dlp process failed (code ${code})`));
+        });
+
+        ytProc.on('error', reject);
+        
+        // Timeout safeguard
+        setTimeout(() => {
+          ytProc.kill();
+          reject(new Error('Streaming timeout'));
+        }, 45000);
+      });
+
+      if (buffer.length === 0) throw new Error('Empty stream received');
+
+      proxyUrlCache.set(cacheKey, buffer);
+      setTimeout(() => proxyUrlCache.delete(cacheKey), 60 * 60 * 1000); // 1h cache
+
+      res.setHeader('Content-Type', type === 'video' ? 'video/mp4' : 'audio/mpeg');
+      res.setHeader('Content-Length', buffer.length);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.send(buffer);
+      return;
     } catch (err) {
-      console.error('[PROXY-STREAM] Failed to extract URL:', err.message);
-      return res.status(500).send('Failed to extract stream URL');
+      console.error('[PROXY-STREAM] TikTok buffer failed:', err.message);
+      // If buffering fails, we fall through to standard proxy as last resort
     }
   }
 
-  await streamFromCdn(directUrl);
+  // Standard Logic for YouTube & others (Direct CDN Proxy)
+  let directData = proxyUrlCache.get(cacheKey);
+
+  if (!directData) {
+    try {
+      directData = await fetchDirectData();
+      proxyUrlCache.set(cacheKey, directData);
+      setTimeout(() => proxyUrlCache.delete(cacheKey), 2 * 60 * 60 * 1000);
+    } catch (err) {
+      console.error('[PROXY-STREAM] Initial extraction failed:', err.message);
+      return res.status(500).send('Failed to extract streamable URL');
+    }
+  }
+
+  await streamFromSource(directData);
 });
 
 module.exports = router;
