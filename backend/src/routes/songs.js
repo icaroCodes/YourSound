@@ -550,9 +550,14 @@ router.get('/proxy-stream', async (req, res) => {
   const isSupported = /youtube\.com|youtu\.be|tiktok\.com/.test(url);
   if (!isSupported) return res.status(400).send('URL not supported');
 
+  const userAgentToUse = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
   // Define headers to forward to the CDN
+  // Hardcoded User-Agent matching yt-dlp guarantees the generated CDN signature matches!
   const requestHeaders = {
-    'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'User-Agent': userAgentToUse,
+    'Referer': isSupported ? new URL(url).origin + '/' : 'https://www.youtube.com/',
+    'Origin': isSupported ? new URL(url).origin : 'https://www.youtube.com'
   };
   if (req.headers.range) {
     requestHeaders['Range'] = req.headers.range;
@@ -567,6 +572,7 @@ router.get('/proxy-stream', async (req, res) => {
         '--get-url',
         '-f', format,
         '--no-playlist',
+        '--user-agent', userAgentToUse,
         url
       ], { maxBuffer: 1024 * 1024 }, (err, stdout) => {
         if (err) return reject(err);
