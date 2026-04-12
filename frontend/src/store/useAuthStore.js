@@ -14,15 +14,26 @@ export const useAuthStore = create((set, get) => ({
     try {
       const sessionPromise = supabase.auth.getSession()
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout')), 6000)
+        setTimeout(() => reject(new Error('Auth Timeout')), 10000)
       )
 
-      const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise])
+      const response = await Promise.race([sessionPromise, timeoutPromise])
+      const session = response?.data?.session
+
+      if (response?.error) {
+        console.error('[Auth] Session error:', response.error.message)
+        // If the error is about an invalid refresh token, we MUST clear the session
+        if (response.error.status === 400 || response.error.message?.includes('Refresh Token')) {
+          await supabase.auth.signOut()
+          set({ session: null, user: null, userProfile: null, isLoading: false })
+          return
+        }
+      }
 
       if (session?.user) {
         const profilePromise = supabase.from('users').select('*').eq('id', session.user.id).single()
         const profileTimeout = new Promise((resolve) =>
-          setTimeout(() => resolve({ data: null }), 4000)
+          setTimeout(() => resolve({ data: null }), 6000)
         )
 
         const { data: profile } = await Promise.race([profilePromise, profileTimeout])
@@ -31,12 +42,18 @@ export const useAuthStore = create((set, get) => ({
         set({ session: null, user: null, userProfile: null, isLoading: false })
       }
     } catch (err) {
-      console.warn('[Auth] Initialization failed or timed out:', err.message)
+      console.warn('[Auth] Initialization failed:', err.message)
       set({ session: null, user: null, userProfile: null, isLoading: false })
     }
 
-    supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
+    // Auth events listener
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log(`[Auth] Event: ${event}`)
+      
+      if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+        usePlayerStore.getState().clearPlayer()
+        set({ session: null, user: null, userProfile: null })
+      } else if (session?.user) {
         const { data: profile } = await supabase.from('users').select('*').eq('id', session.user.id).single()
         set({ session, user: session.user, userProfile: profile })
       } else {
@@ -64,9 +81,14 @@ export const useAuthStore = create((set, get) => ({
   },
 
   signOut: async () => {
-    await supabase.auth.signOut()
-    usePlayerStore.getState().clearPlayer()
-    set({ session: null, user: null, userProfile: null })
+    try {
+      await supabase.auth.signOut()
+    } catch (e) {
+      console.warn('[Auth] SignOut error (likely already signed out):', e.message)
+    } finally {
+      usePlayerStore.getState().clearPlayer()
+      set({ session: null, user: null, userProfile: null })
+    }
   },
 
   // Atualiza o perfil local no store após edição

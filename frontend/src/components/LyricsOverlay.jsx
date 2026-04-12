@@ -22,6 +22,7 @@ export default function LyricsOverlay() {
   // Video state
   const [videoBlobUrl, setVideoBlobUrl] = useState(null)
   const [videoLoading, setVideoLoading] = useState(false)
+  const [videoError, setVideoError] = useState(false)
 
   const containerRef = useRef(null)
   const lineRefs = useRef([])
@@ -96,10 +97,12 @@ export default function LyricsOverlay() {
     if (!isVideoMode || !videoUrl) {
       setVideoBlobUrl(null)
       setVideoLoading(false)
+      setVideoError(false)
       return
     }
 
     setVideoLoading(true)
+    setVideoError(false)
     setVideoBlobUrl(`${API_BASE}/api/songs/proxy-stream?url=${encodeURIComponent(videoUrl)}&type=video`)
   }, [isVideoMode, videoUrl])
 
@@ -296,10 +299,15 @@ export default function LyricsOverlay() {
 
       {isVideoMode ? (
         <div className="absolute inset-0 overflow-hidden pointer-events-none bg-black">
-          {videoLoading && (
+          {videoLoading && !videoError && (
             <div className="absolute inset-0 flex items-center justify-center z-10">
               <div className="w-10 h-10 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             </div>
+          )}
+          {videoError && (
+             <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-black/40">
+                <p className="text-white/30 text-xs font-mono uppercase tracking-widest">Vídeo indisponível</p>
+             </div>
           )}
           {videoBlobUrl && (
             <video
@@ -313,10 +321,12 @@ export default function LyricsOverlay() {
               onLoadedData={(e) => { 
                 e.target.style.opacity = '0.6'; 
                 setVideoLoading(false); 
+                setVideoError(false);
               }}
               onError={() => {
                 console.error('[LyricsOverlay] Video playback failed');
                 setVideoLoading(false);
+                setVideoError(true);
               }}
             />
           )}

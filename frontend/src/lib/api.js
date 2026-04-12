@@ -41,6 +41,12 @@ function getAuthHeaders() {
 }
 
 async function handleResponse(response) {
+  if (response.status === 401) {
+    console.warn('[API] 401 Unauthorized - forcing logout');
+    useAuthStore.getState().signOut();
+    throw new Error('Sessão expirada. Faça login novamente.');
+  }
+
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.error || `Erro ${response.status}`);

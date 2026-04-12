@@ -18,8 +18,11 @@ export async function fetchLyrics(artist, title, duration) {
     const getRes = await fetch(`${LRCLIB_BASE}/get?${getParams}`, {
       headers: { 'User-Agent': 'YourSound v1.0' }
     })
+    
     if (getRes.ok) {
-      data = await getRes.json()
+      data = await getRes.json().catch(() => null)
+    } else if (getRes.status !== 404) {
+      console.warn(`[Lyrics] LRCLIB /get returned ${getRes.status}`)
     }
 
     // 2. Fallback: search and pick closest duration with synced lyrics
@@ -28,9 +31,10 @@ export async function fetchLyrics(artist, title, duration) {
         `${LRCLIB_BASE}/search?${new URLSearchParams({ artist_name: artist, track_name: title })}`,
         { headers: { 'User-Agent': 'YourSound v1.0' } }
       )
+      
       if (searchRes.ok) {
-        const results = await searchRes.json()
-        if (results.length > 0) {
+        const results = await searchRes.json().catch(() => [])
+        if (Array.isArray(results) && results.length > 0) {
           // Prefer results with syncedLyrics, sorted by closest duration
           const withSync = results.filter(r => r.syncedLyrics)
           const pool = withSync.length > 0 ? withSync : results
@@ -40,6 +44,8 @@ export async function fetchLyrics(artist, title, duration) {
           }
           data = pool[0]
         }
+      } else {
+        console.warn(`[Lyrics] LRCLIB /search returned ${searchRes.status}`)
       }
     }
 
