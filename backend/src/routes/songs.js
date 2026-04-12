@@ -40,6 +40,14 @@ const {
 // yt-dlp binary — lives in backend/bin/
 const ytdlpBin = path.join(__dirname, '..', '..', 'bin', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
 
+try {
+  if (process.platform !== 'win32' && fs.existsSync(ytdlpBin)) {
+    fs.chmodSync(ytdlpBin, '755');
+  }
+} catch (e) {
+  console.error('Failed to chmod yt-dlp:', e.message);
+}
+
 /** Run yt-dlp with a hard timeout — never hangs */
 function runYtdlp(args, timeoutMs = 60000) {
   return new Promise((resolve, reject) => {
@@ -532,12 +540,8 @@ router.patch('/:id/subtitle', verifyAuth, async (req, res) => {
   }
 });
 
-/**
- * GET /api/songs/proxy-stream
- * Proxies video from YouTube/TikTok via yt-dlp.
- * Uses yt-dlp for BOTH YouTube and TikTok — ytdl-core is unreliable
- * on cloud servers (Railway) because YouTube blocks their IPs.
- */
+const proxyUrlCache = new Map();
+
 router.get('/proxy-stream', async (req, res) => {
   const { url, type = 'video' } = req.query;
 
@@ -546,74 +550,94 @@ router.get('/proxy-stream', async (req, res) => {
   const isSupported = /youtube\.com|youtu\.be|tiktok\.com/.test(url);
   if (!isSupported) return res.status(400).send('URL not supported');
 
-  console.log(`[PROXY-STREAM] url=${url} type=${type}`);
+  // Define headers to forward to the CDN
+  const requestHeaders = {
+    'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+  };
+  if (req.headers.range) {
+    requestHeaders['Range'] = req.headers.range;
+  }
 
-  // Download to a temp file first so we can serve it with proper Content-Length
-  // (enabling range requests and allowing the browser to seek freely)
-  const tmpPath = path.join(os.tmpdir(), `ys_proxy_${Date.now()}_${Math.random().toString(36).slice(2)}.mp4`);
+  const cacheKey = `${url}_${type}`;
+  
+  async function fetchDirectUrl() {
+    const format = type === 'video' ? 'best[height<=720][ext=mp4]/best[ext=mp4]/best' : 'bestaudio/best';
+    return new Promise((resolve, reject) => {
+      execFile(ytdlpBin, [
+        '--get-url',
+        '-f', format,
+        '--no-playlist',
+        url
+      ], { maxBuffer: 1024 * 1024 }, (err, stdout) => {
+        if (err) return reject(err);
+        const lines = stdout.split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
+        if (lines.length > 0) resolve(lines[0]);
+        else reject(new Error('No URL found'));
+      });
+    });
+  }
 
-  const args = [
-    url,
-    '-f', type === 'video' ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best' : 'bestaudio/best',
-    '--merge-output-format', 'mp4',
-    '-o', tmpPath,
-    '--no-playlist',
-    '--no-warnings',
-    '--quiet',
-  ];
+  async function streamFromCdn(directUrl, isRetry = false) {
+    try {
+      const response = await axios({
+        method: 'GET',
+        url: directUrl,
+        responseType: 'stream',
+        headers: requestHeaders,
+        maxRedirects: 5
+      });
 
-  const proc = spawn(ytdlpBin, args);
+      res.status(response.status);
 
-  let stderr = '';
-  proc.stderr?.on('data', d => { stderr += d.toString() });
+      const headersToProxy = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control'];
+      headersToProxy.forEach(header => {
+        if (response.headers[header]) {
+          res.setHeader(header, response.headers[header]);
+        }
+      });
 
-  proc.on('error', (err) => {
-    console.error('[PROXY-STREAM] spawn error:', err.message);
-    if (!res.headersSent) res.status(500).send('yt-dlp not available');
-  });
+      response.data.pipe(res);
+      req.on('close', () => { response.data.destroy(); });
 
-  proc.on('close', (code) => {
-    if (code !== 0) {
-      console.error(`[PROXY-STREAM] yt-dlp exited ${code}: ${stderr.slice(0, 300)}`);
-      if (!res.headersSent) res.status(500).send('Download failed');
-      try { fs.unlinkSync(tmpPath) } catch {}
-      return;
+    } catch (err) {
+      // If the CDN link expired or was forbidden, evict cache and retry once
+      if (!isRetry && err.response && [403, 404, 410].includes(err.response.status)) {
+        console.log('[PROXY-STREAM] Cache expired/forbidden, retrying...');
+        proxyUrlCache.delete(cacheKey);
+        try {
+          const newUrl = await fetchDirectUrl();
+          proxyUrlCache.set(cacheKey, newUrl);
+          // Expire in 2 hours
+          setTimeout(() => proxyUrlCache.delete(cacheKey), 2 * 60 * 60 * 1000);
+          return await streamFromCdn(newUrl, true);
+        } catch(retryErr) {
+          if (!res.headersSent) res.status(500).send('Proxy retry error');
+          return;
+        }
+      }
+      
+      console.error('[PROXY-STREAM] Streaming error:', err.message);
+      if (!res.headersSent) {
+        if (err.response) res.status(err.response.status).send('CDN error');
+        else res.status(500).send('Proxy error');
+      }
     }
+  }
 
-    // Serve the temp file with proper headers for range support
-    res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Accept-Ranges', 'bytes');
+  let directUrl = proxyUrlCache.get(cacheKey);
 
-    const stat = fs.statSync(tmpPath);
-    const total = stat.size;
-    const rangeHeader = req.headers.range;
-
-    if (rangeHeader) {
-      const [startStr, endStr] = rangeHeader.replace('bytes=', '').split('-');
-      const start = parseInt(startStr, 10);
-      const end = endStr ? parseInt(endStr, 10) : total - 1;
-      const chunkSize = end - start + 1;
-
-      res.status(206);
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
-      res.setHeader('Content-Length', chunkSize);
-
-      const fileStream = fs.createReadStream(tmpPath, { start, end });
-      fileStream.pipe(res);
-      fileStream.on('close', () => { try { fs.unlinkSync(tmpPath) } catch {} });
-    } else {
-      res.setHeader('Content-Length', total);
-      const fileStream = fs.createReadStream(tmpPath);
-      fileStream.pipe(res);
-      fileStream.on('close', () => { try { fs.unlinkSync(tmpPath) } catch {} });
+  if (!directUrl) {
+    try {
+      directUrl = await fetchDirectUrl();
+      proxyUrlCache.set(cacheKey, directUrl);
+      setTimeout(() => proxyUrlCache.delete(cacheKey), 2 * 60 * 60 * 1000);
+    } catch (err) {
+      console.error('[PROXY-STREAM] Failed to extract URL:', err.message);
+      return res.status(500).send('Failed to extract stream URL');
     }
-  });
+  }
 
-  // Clean up if client disconnects early
-  req.on('close', () => {
-    proc.kill('SIGTERM');
-    try { fs.unlinkSync(tmpPath) } catch {}
-  });
+  await streamFromCdn(directUrl);
 });
 
 module.exports = router;

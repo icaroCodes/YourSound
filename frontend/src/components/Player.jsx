@@ -51,7 +51,7 @@ export default function Player() {
 
     return () => {
       ['play', 'pause', 'previoustrack', 'nexttrack'].forEach(action => {
-        try { navigator.mediaSession.setActionHandler(action, null) } catch {}
+        try { navigator.mediaSession.setActionHandler(action, null) } catch { }
       })
     }
   }, [currentSong, isPlaying]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -117,7 +117,7 @@ export default function Player() {
       // Persist duration to DB for songs that don't have it yet
       if (currentSong && (!currentSong.duration) && dur && isFinite(dur)) {
         import('../lib/api').then(({ api }) => {
-          api.updateSongDuration?.(currentSong.id, dur).catch(() => {})
+          api.updateSongDuration?.(currentSong.id, dur).catch(() => { })
         })
       }
     }
@@ -130,7 +130,7 @@ export default function Player() {
           audioRef.current.currentTime = t
           setProgress(t)
         }
-      } catch {}
+      } catch { }
     }
   }
 
@@ -144,7 +144,7 @@ export default function Player() {
       const intT = Math.floor(t)
       if (intT !== lastSavedTimeRef.current) {
         lastSavedTimeRef.current = intT
-        try { localStorage.setItem('ys_current_time', String(t)) } catch {}
+        try { localStorage.setItem('ys_current_time', String(t)) } catch { }
       }
     }
   }
@@ -197,23 +197,23 @@ export default function Player() {
         width: 320,
         height: 380,
       })
-      
-      // Copiar todos os estilos (Tailwind) para a janela PiP
-      ;[...document.styleSheets].forEach((styleSheet) => {
-        try {
-          const cssRules = [...styleSheet.cssRules].map((r) => r.cssText).join('')
-          const style = document.createElement('style')
-          style.textContent = cssRules
-          pip.document.head.appendChild(style)
-        } catch (e) {
-          const link = document.createElement('link')
-          link.rel = 'stylesheet'
-          link.type = styleSheet.type
-          link.media = styleSheet.media
-          link.href = styleSheet.href
-          pip.document.head.appendChild(link)
-        }
-      })
+
+        // Copiar todos os estilos (Tailwind) para a janela PiP
+        ;[...document.styleSheets].forEach((styleSheet) => {
+          try {
+            const cssRules = [...styleSheet.cssRules].map((r) => r.cssText).join('')
+            const style = document.createElement('style')
+            style.textContent = cssRules
+            pip.document.head.appendChild(style)
+          } catch (e) {
+            const link = document.createElement('link')
+            link.rel = 'stylesheet'
+            link.type = styleSheet.type
+            link.media = styleSheet.media
+            link.href = styleSheet.href
+            pip.document.head.appendChild(link)
+          }
+        })
 
       // Resetar margins/bg da nova janela
       pip.document.body.style.margin = '0'
@@ -235,40 +235,43 @@ export default function Player() {
       <div className="w-full h-full flex items-center justify-between px-4">
         <div className="w-[30%] min-w-[180px] flex items-center gap-3">
           <div className="w-14 h-14 rounded bg-zinc-800 flex items-center justify-center shrink-0">
-            <span className="text-zinc-500">&#9835;</span>
+            <span className="text-zinc-500 font-bold">&#9835;</span>
           </div>
-          <div className="flex flex-col truncate">
+          <div className="flex flex-col truncate ml-1">
             <span className="text-sm font-medium text-zinc-500">--</span>
-            <span className="text-xs text-zinc-600">--</span>
+            <span className="text-[12px] text-zinc-600 tracking-wide mt-0.5">--</span>
           </div>
+          <button className="hidden sm:block shrink-0 text-zinc-600 ml-2" disabled>
+            <PlusCircle size={16} strokeWidth={1.5} />
+          </button>
         </div>
 
-        <div className="w-[40%] max-w-[722px] flex flex-col items-center gap-1">
-          <div className="flex items-center gap-6 opacity-40 pointer-events-none">
-            <button className="text-zinc-400"><SkipBack size={18} fill="currentColor" /></button>
+        <div className="w-[40%] max-w-[722px] flex flex-col items-center gap-1.5">
+          <div className="flex items-center gap-5 opacity-40 pointer-events-none">
+            <button className="text-[#b3b3b3]"><SkipBack size={16} fill="currentColor" /></button>
             <button className="w-8 h-8 flex items-center justify-center bg-white text-black rounded-full">
-               <Play size={16} fill="currentColor" className="ml-0.5" />
+              <Play size={16} fill="currentColor" className="ml-0.5" />
             </button>
-            <button className="text-zinc-400"><SkipForward size={18} fill="currentColor" /></button>
+            <button className="text-[#b3b3b3]"><SkipForward size={16} fill="currentColor" /></button>
           </div>
-          <div className="w-full flex items-center gap-2 text-[11px] text-zinc-500 font-medium">
-            <span className="w-8 text-right">0:00</span>
-            <div className="flex-1 h-1 bg-zinc-700/50 rounded-full" />
-            <span className="w-8">--:--</span>
+          <div className="w-full flex items-center gap-2 text-[11px] text-[#a7a7a7] font-medium tracking-wide">
+            <span className="w-10 text-right">0:00</span>
+            <div className="flex-1 h-1 bg-[#4d4d4d] rounded-full" />
+            <span className="w-10 text-left">--:--</span>
           </div>
         </div>
 
-        <div className="w-[30%] min-w-[180px] flex items-center justify-end gap-3 text-zinc-600">
-          <Mic2 size={16} className="hidden md:block" />
-          <ListMusic size={16} className="hidden md:block" />
-          <MonitorSpeaker size={16} className="hidden md:block" />
+        <div className="w-[30%] min-w-[180px] flex items-center justify-end gap-3.5 text-[#b3b3b3]">
+          <Mic2 size={16} strokeWidth={1.5} className="hidden md:block" />
+          <ListMusic size={16} strokeWidth={1.5} className="hidden md:block" />
           <div className="flex items-center gap-2 w-[100px] group relative h-4">
-            <button className="text-zinc-500 z-20"><Volume2 size={16} /></button>
+            <button className="text-zinc-500 z-20"><Volume2 size={16} strokeWidth={1.5} /></button>
             <div className="flex-1 relative flex items-center h-full">
-              <div className="w-full h-1 bg-zinc-600 rounded-full" />
+              <div className="w-full h-1 bg-[#4d4d4d] rounded-full" />
             </div>
           </div>
-          <Maximize2 size={16} className="hidden lg:block cursor-pointer hover:text-white transition" onClick={toggleFullscreen} />
+          <PictureInPicture2 size={16} strokeWidth={1.5} className="hidden lg:block cursor-not-allowed" />
+          <Maximize2 size={16} strokeWidth={1.5} className="hidden lg:block cursor-not-allowed" />
         </div>
       </div>
     )
@@ -285,7 +288,7 @@ export default function Player() {
         onEnded={() => {
           if (repeatMode === 'one' && audioRef.current) {
             audioRef.current.currentTime = 0
-            audioRef.current.play().catch(() => {})
+            audioRef.current.play().catch(() => { })
           } else {
             next()
           }
@@ -299,19 +302,19 @@ export default function Player() {
           <img src={currentSong.cover_url} alt="" className="w-14 h-14 rounded object-cover shadow-md shrink-0" />
         ) : (
           <div className="w-14 h-14 rounded bg-zinc-800 flex items-center justify-center shrink-0">
-            <span className="text-zinc-500">&#9835;</span>
+            <span className="text-zinc-500 font-bold">&#9835;</span>
           </div>
         )}
-        <div className="flex flex-col truncate">
+        <div className="flex flex-col truncate ml-1">
           <span className="text-sm font-medium text-white hover:underline cursor-pointer truncate">{currentSong.title}</span>
-          <span className="text-xs text-zinc-400 hover:text-white hover:underline cursor-pointer truncate">{currentSong.artist}</span>
+          <span className="text-[12px] text-[#b3b3b3] hover:text-white hover:underline cursor-pointer truncate tracking-wide mt-0.5">{currentSong.artist}</span>
         </div>
         <button
           onClick={() => setAddModalOpen(true)}
-          className="hidden sm:block hover:scale-110 transition-transform shrink-0 text-zinc-400 hover:text-white"
+          className="hidden sm:block hover:scale-105 transition-transform shrink-0 text-[#b3b3b3] hover:text-white ml-2"
           title="Adicionar à playlist"
         >
-          <PlusCircle size={18} />
+          <PlusCircle size={16} strokeWidth={1.5} />
         </button>
       </div>
 
@@ -321,30 +324,20 @@ export default function Player() {
       )}
 
       {/* Center: Controls + Progress */}
-      <div className="w-[40%] max-w-[722px] flex flex-col items-center gap-1">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={toggleRepeat}
-            title={repeatMode === 'off' ? 'Repetir' : repeatMode === 'all' ? 'Repetir tudo' : 'Repetir uma'}
-            className={`relative transition ${repeatMode !== 'off' ? 'text-spotify-green' : 'text-zinc-400 hover:text-white'}`}
-          >
-            {repeatMode === 'one'
-              ? <span className="relative"><Repeat size={16} /><span className="absolute -top-1 -right-1 text-[8px] font-bold leading-none">1</span></span>
-              : <Repeat size={16} />}
-          </button>
-          <button onClick={previous} className="text-zinc-400 hover:text-white transition"><SkipBack size={18} fill="currentColor" /></button>
+      <div className="w-[40%] max-w-[722px] flex flex-col items-center gap-1.5">
+        <div className="flex items-center gap-5">
+          <button onClick={previous} className="text-[#b3b3b3] hover:text-white transition"><SkipBack size={16} fill="currentColor" /></button>
           <button
             onClick={togglePlay}
             className="w-8 h-8 flex items-center justify-center bg-white text-black rounded-full hover:scale-105 transition-transform"
           >
             {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
           </button>
-          <button onClick={next} className="text-zinc-400 hover:text-white transition"><SkipForward size={18} fill="currentColor" /></button>
-          <div className="w-4" />
+          <button onClick={next} className="text-[#b3b3b3] hover:text-white transition"><SkipForward size={16} fill="currentColor" /></button>
         </div>
 
-        <div className="w-full flex items-center gap-2 text-[11px] text-zinc-400 font-medium">
-          <span className="w-8 text-right">{formatTime(progress)}</span>
+        <div className="w-full flex items-center gap-2 text-[11px] text-[#a7a7a7] font-medium tracking-wide">
+          <span className="w-10 text-right">{formatTime(progress)}</span>
           <div className="flex-1 group relative flex items-center h-4">
             <input
               type="range"
@@ -356,7 +349,7 @@ export default function Player() {
               onPointerUp={handleSeekCommit}
               className="absolute w-full h-1 opacity-0 cursor-pointer z-10"
             />
-            <div className="w-full h-1 bg-zinc-600 rounded-full overflow-hidden absolute pointer-events-none group-hover:h-1.5 transition-all">
+            <div className="w-full h-1 bg-[#4d4d4d] rounded-full overflow-hidden absolute pointer-events-none group-hover:h-1.5 transition-all">
               <div
                 className="h-full bg-white group-hover:bg-spotify-green transition-colors"
                 style={{ width: `${(progress / Math.max(duration, 1)) * 100}%` }}
@@ -367,27 +360,26 @@ export default function Player() {
               style={{ left: `calc(${(progress / Math.max(duration, 1)) * 100}% - 6px)` }}
             />
           </div>
-          <span className="w-8">{formatTime(duration)}</span>
+          <span className="w-10 text-left">{formatTime(duration)}</span>
         </div>
       </div>
 
       {/* Right: Volume + Extras */}
-      <div className="w-[30%] min-w-[180px] flex items-center justify-end gap-3 text-zinc-400 relative">
+      <div className="w-[30%] min-w-[180px] flex items-center justify-end gap-3.5 text-[#b3b3b3] relative">
         <button
           onClick={toggleLyrics}
           className={`transition hidden md:block ${isLyricsOpen ? 'text-spotify-green' : 'hover:text-white'}`}
           title="Letras"
         >
-          <Mic2 size={16} />
+          <Mic2 size={16} strokeWidth={1.5} />
         </button>
-        <button 
+        <button
           onClick={toggleQueue}
           className={`transition hidden md:block ${isQueueOpen ? 'text-spotify-green' : 'hover:text-white'}`}
           title="Fila"
         >
-          <ListMusic size={16} />
+          <ListMusic size={16} strokeWidth={1.5} />
         </button>
-        <button className="hover:text-white transition hidden md:block"><MonitorSpeaker size={16} /></button>
 
         {/* --- Queue now lives in RightPanel --- */}
 
@@ -400,7 +392,7 @@ export default function Player() {
               setVolume(0)
             }
           }} className="hover:text-white transition z-20">
-            {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+            {volume === 0 ? <VolumeX size={16} strokeWidth={1.5} /> : <Volume2 size={16} strokeWidth={1.5} />}
           </button>
           <div className="flex-1 relative flex items-center h-full">
             <input
@@ -412,7 +404,7 @@ export default function Player() {
               onChange={(e) => setVolume(Number(e.target.value))}
               className="absolute w-full h-1 opacity-0 cursor-pointer z-10"
             />
-            <div className="w-full h-1 bg-zinc-600 rounded-full overflow-hidden absolute pointer-events-none group-hover:h-1.5 transition-all">
+            <div className="w-full h-1 bg-[#4d4d4d] rounded-full overflow-hidden absolute pointer-events-none group-hover:h-1.5 transition-all">
               <div className="h-full bg-white group-hover:bg-spotify-green" style={{ width: `${volume * 100}%` }} />
             </div>
             <div className="absolute h-3 w-3 bg-white rounded-full opacity-0 group-hover:opacity-100 shadow pointer-events-none" style={{ left: `calc(${volume * 100}% - 6px)` }} />
@@ -420,9 +412,9 @@ export default function Player() {
         </div>
 
         <button onClick={togglePiP} title="Mini Player" className={`transition hidden lg:block ${pipWindow ? 'text-spotify-green' : 'hover:text-white'}`}>
-          <PictureInPicture2 size={16} />
+          <PictureInPicture2 size={16} strokeWidth={1.5} />
         </button>
-        <button onClick={toggleFullscreen} className="hover:text-white transition hidden lg:block"><Maximize2 size={16} /></button>
+        <button onClick={toggleFullscreen} className="hover:text-white transition hidden lg:block"><Maximize2 size={16} strokeWidth={1.5} /></button>
       </div>
 
       {/* ─── PiP Portal ─── */}
@@ -438,7 +430,7 @@ export default function Player() {
               </div>
             )}
           </div>
-          
+
           {/* Info & Like */}
           <div className="flex flex-col shrink-0 mb-5 px-1">
             <div className="flex items-center justify-between gap-4">
