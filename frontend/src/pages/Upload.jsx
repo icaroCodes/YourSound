@@ -1,43 +1,117 @@
 import { useState, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../store/useAuthStore'
 import { api } from '../lib/api'
-import { Upload as UploadIcon, AlertCircle, CheckCircle2, Music4, Image as ImageIcon, X } from 'lucide-react'
+import {
+  Upload as UploadIcon, Music4, ImageIcon, X, Check,
+  Link2, AlertCircle, CheckCircle2, Globe, Lock,
+  Type, Video, AlignLeft
+} from 'lucide-react'
 
+// ─── Animation variants ───────────────────────────────────────────────────────
+const stagger = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1, transition: { staggerChildren: 0.07, delayChildren: 0.05 } }
+}
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 18 },
+  show: { opacity: 1, y: 0, transition: { type: 'spring', damping: 26, stiffness: 300 } }
+}
+
+const fadeIn = {
+  hidden: { opacity: 0, scale: 0.97 },
+  show: { opacity: 1, scale: 1, transition: { type: 'spring', damping: 28, stiffness: 320 } },
+  exit: { opacity: 0, scale: 0.97, transition: { duration: 0.15 } }
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function Field({ label, children }) {
+  return (
+    <motion.div variants={fadeUp} className="flex flex-col gap-2">
+      <label className="text-[11px] uppercase tracking-widest font-semibold text-zinc-500 px-0.5">
+        {label}
+      </label>
+      {children}
+    </motion.div>
+  )
+}
+
+function Input({ ...props }) {
+  return (
+    <input
+      {...props}
+      className="w-full px-4 py-3.5 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-sm
+        placeholder:text-zinc-600 focus:outline-none focus:border-[#1ED45E] focus:ring-1 focus:ring-[#1ED45E]/40
+        transition-all hover:border-zinc-700"
+    />
+  )
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function Upload() {
   const { user } = useAuthStore()
+
   const [title, setTitle] = useState('')
   const [artist, setArtist] = useState('')
   const [isPublic, setIsPublic] = useState(false)
   const [audioFile, setAudioFile] = useState(null)
   const [coverFile, setCoverFile] = useState(null)
+  const [coverPreview, setCoverPreview] = useState(null)
   const [loading, setLoading] = useState(false)
   const [useLink, setUseLink] = useState(false)
   const [linkUrl, setLinkUrl] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
   
+  const [subtitleMode, setSubtitleMode] = useState('none') // 'none', 'manual', 'video'
+  const [subtitleData, setSubtitleData] = useState([])
+  const [subtitleVideoUrl, setSubtitleVideoUrl] = useState('')
+  const [manualText, setManualText] = useState('')
+
   const audioInputRef = useRef(null)
   const coverInputRef = useRef(null)
 
-  const handleAudioChange = (e) => {
-    const file = e.target.files[0]
-    if (file && file.size > 15 * 1024 * 1024) {
-      setMessage({ type: 'error', text: 'O arquivo de áudio deve ter no máximo 15MB.' })
-      e.target.value = null
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
+  const handleAudioChange = (file) => {
+    if (!file) return
+    if (file.size > 15 * 1024 * 1024) {
+      setMessage({ type: 'error', text: 'O arquivo deve ter no máximo 15MB.' })
       return
     }
     setAudioFile(file)
     setMessage({ type: '', text: '' })
   }
 
+  const handleCoverChange = (file) => {
+    if (!file) return
+    setCoverFile(file)
+    setCoverPreview(URL.createObjectURL(file))
+  }
+
+  const removeCover = (e) => {
+    e.stopPropagation()
+    setCoverFile(null)
+    setCoverPreview(null)
+    if (coverInputRef.current) coverInputRef.current.value = ''
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const file = e.dataTransfer.files[0]
+    if (file?.type.startsWith('audio/')) handleAudioChange(file)
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
-    
     if (!useLink && !audioFile) {
       setMessage({ type: 'error', text: 'Selecione um arquivo de áudio.' })
       return
     }
-
-    if (useLink && !linkUrl) {
+    if (useLink && !linkUrl.trim()) {
       setMessage({ type: 'error', text: 'Insira o link do vídeo.' })
       return
     }
@@ -47,247 +121,331 @@ export default function Upload() {
 
     try {
       const payload = {
-        title,
-        artist,
-        isPublic,
-        coverFile
+        title, artist, isPublic, coverFile,
+        subtitleMode,
+        subtitleData: subtitleMode === 'manual' ? subtitleData : null,
+        subtitleVideoUrl: subtitleMode === 'video' ? subtitleVideoUrl : null
       }
-
-      let result;
-      if (useLink) {
-        result = await api.uploadSongFromLink({ ...payload, url: linkUrl })
-      } else {
-        result = await api.uploadSong({ ...payload, audioFile })
-      }
+      const result = useLink
+        ? await api.uploadSongFromLink({ ...payload, url: linkUrl })
+        : await api.uploadSong({ ...payload, audioFile })
 
       setMessage({ type: 'success', text: result.message })
-      setTitle('')
-      setArtist('')
-      setIsPublic(false)
-      setAudioFile(null)
-      setCoverFile(null)
-      setLinkUrl('')
+      setTitle(''); setArtist(''); setIsPublic(false)
+      setAudioFile(null); setCoverFile(null); setCoverPreview(null); setLinkUrl('')
+      setSubtitleMode('none'); setSubtitleData([]); setSubtitleVideoUrl(''); setManualText('')
       if (audioInputRef.current) audioInputRef.current.value = ''
       if (coverInputRef.current) coverInputRef.current.value = ''
     } catch (err) {
-      console.error("Upload error:", err.message)
       setMessage({ type: 'error', text: err.message })
     } finally {
       setLoading(false)
     }
   }
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
-    <div className="max-w-4xl mx-auto px-6 py-12 md:py-20 animate-in fade-in duration-700">
-      <div className="text-center mb-16">
-        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4 bg-gradient-to-b from-white to-zinc-500 bg-clip-text text-transparent">
-          Crie algo incrível
-        </h1>
-        <p className="text-zinc-400 text-lg max-w-lg mx-auto">
-          Adicione suas faixas à sua biblioteca e compartilhe seu talento com o mundo.
-        </p>
-      </div>
+    <div className="max-w-xl mx-auto px-4 py-10 pb-32">
 
-      {message.text && (
-        <div className={`mb-8 p-4 rounded-2xl flex items-center gap-3 border animate-in slide-in-from-top-2 ${
-          message.type === 'error' 
-            ? 'bg-red-500/10 border-red-500/20 text-red-400' 
-            : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-        }`}>
-          {message.type === 'error' ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
-          <span className="text-sm font-medium">{message.text}</span>
-        </div>
-      )}
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+        className="mb-10"
+      >
+        <h1 className="text-3xl font-bold text-white tracking-tight">Enviar música</h1>
+        <p className="text-zinc-500 text-sm mt-1.5">Adicione faixas à sua biblioteca.</p>
+      </motion.div>
 
-      <form onSubmit={handleSubmit} className="space-y-10">
-        {/* Main Info Section */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="space-y-4">
-            <div className="group">
-              <label className="block text-[11px] uppercase tracking-widest font-bold text-zinc-500 mb-2 px-1 group-focus-within:text-indigo-400 transition-colors">
-                Título da Música
-              </label>
-              <input 
-                type="text" required value={title} onChange={e => setTitle(e.target.value)}
-                className="w-full px-5 py-4 bg-white/[0.03] border border-white/5 rounded-2xl text-white text-lg placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all hover:bg-white/[0.05]"
-                placeholder="Nome da sua obra-prima"
+      {/* Feedback */}
+      <AnimatePresence>
+        {message.text && (
+          <motion.div
+            key="msg"
+            initial={{ opacity: 0, y: -8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.98 }}
+            transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+            className={`mb-6 flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm border ${
+              message.type === 'error'
+                ? 'bg-red-500/8 border-red-500/20 text-red-400'
+                : 'bg-[#1ED45E]/8 border-[#1ED45E]/20 text-[#1ED45E]'
+            }`}
+          >
+            {message.type === 'error'
+              ? <AlertCircle size={16} className="shrink-0" />
+              : <CheckCircle2 size={16} className="shrink-0" />
+            }
+            {message.text}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <form onSubmit={handleSubmit}>
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          animate="show"
+          className="space-y-5"
+        >
+
+          {/* ── Título ── */}
+          <Field label="Título da música">
+            <Input
+              type="text" required
+              value={title} onChange={e => setTitle(e.target.value)}
+              placeholder="Nome da faixa"
+            />
+          </Field>
+
+          {/* ── Artista ── */}
+          <Field label="Artista / Banda">
+            <Input
+              type="text" required
+              value={artist} onChange={e => setArtist(e.target.value)}
+              placeholder="Nome do artista"
+            />
+          </Field>
+
+          {/* ── Divisor ── */}
+          <motion.div variants={fadeUp} className="h-px bg-zinc-900 my-2" />
+
+          {/* ── Toggle Fonte ── */}
+          <motion.div variants={fadeUp}>
+            <div className="relative flex bg-zinc-900 rounded-2xl p-1 gap-1">
+              <motion.div
+                layoutId="tab-indicator"
+                className="absolute inset-y-1 rounded-full bg-white"
+                style={{ width: 'calc(50% - 4px)', left: useLink ? 'calc(50% + 0px)' : '4px' }}
+                transition={{ type: 'spring', damping: 24, stiffness: 300 }}
               />
-            </div>
-            <div className="group">
-              <label className="block text-[11px] uppercase tracking-widest font-bold text-zinc-500 mb-2 px-1 group-focus-within:text-indigo-400 transition-colors">
-                Artista / Banda
-              </label>
-              <input 
-                type="text" required value={artist} onChange={e => setArtist(e.target.value)}
-                className="w-full px-5 py-4 bg-white/[0.03] border border-white/5 rounded-2xl text-white text-lg placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all hover:bg-white/[0.05]"
-                placeholder="Quem é o criador?"
-              />
-            </div>
-
-            <div className="pt-4">
-              <label className="flex items-center gap-4 bg-white/[0.03] p-5 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/[0.06] transition-all active:scale-[0.98]">
-                <div className="relative flex items-center justify-center">
-                  <input 
-                    type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)}
-                    className="peer appearance-none w-6 h-6 rounded-full border border-white/10 checked:bg-indigo-500 checked:border-indigo-500 transition-all"
-                  />
-                  <CheckCircle2 size={14} className="absolute text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-semibold text-white">Tornar música pública</span>
-                  <span className="text-xs text-zinc-500">Permitir que outros usuários ouçam sua faixa</span>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          {/* Mode Toggle & File/Link Section */}
-          <div className="space-y-6">
-            <div className="flex bg-white/[0.03] p-1 rounded-2xl border border-white/5">
               <button
                 type="button"
                 onClick={() => setUseLink(false)}
-                className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${!useLink ? 'bg-white text-black shadow-lg' : 'text-zinc-500 hover:text-white'}`}
+                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl text-sm font-semibold transition-colors duration-200 ${
+                  !useLink ? 'text-black' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
               >
+                <UploadIcon size={14} />
                 Arquivo Local
               </button>
               <button
                 type="button"
                 onClick={() => setUseLink(true)}
-                className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${useLink ? 'bg-white text-black shadow-lg' : 'text-zinc-500 hover:text-white'}`}
+                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl text-sm font-semibold transition-colors duration-200 ${
+                  useLink ? 'text-black' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
               >
+                <Link2 size={14} />
                 Link (YT / TikTok)
               </button>
             </div>
+          </motion.div>
 
+          {/* ── Área de Arquivo / Link ── */}
+          <AnimatePresence mode="wait">
             {useLink ? (
-              <div className="group animate-in slide-in-from-right-4 duration-300">
-                <label className="block text-[11px] uppercase tracking-widest font-bold text-zinc-500 mb-2 px-1 group-focus-within:text-indigo-400 transition-colors">
-                  Link do Vídeo
+              <motion.div key="link" variants={fadeIn} initial="hidden" animate="show" exit="exit">
+                <label className="block text-[11px] uppercase tracking-widest font-semibold text-zinc-500 mb-2 px-0.5">
+                  URL do Vídeo
                 </label>
                 <div className="relative">
-                  <input 
-                    type="url" required value={linkUrl} onChange={e => setLinkUrl(e.target.value)}
-                    className="w-full px-5 py-6 bg-white/[0.03] border border-white/5 rounded-2xl text-white text-lg placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all hover:bg-white/[0.05]"
-                    placeholder="https://www.youtube.com/watch?v=... ou TikTok"
+                  <Link2 size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none" />
+                  <input
+                    type="url" required value={linkUrl}
+                    onChange={e => setLinkUrl(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3.5 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-sm
+                      placeholder:text-zinc-600 focus:outline-none focus:border-[#1ED45E] focus:ring-1 focus:ring-[#1ED45E]/40
+                      transition-all hover:border-zinc-700"
+                    placeholder="https://youtube.com/watch?v=... ou TikTok"
                   />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 bg-white/5 px-3 py-1 rounded-lg border border-white/5 pointer-events-none uppercase tracking-tighter">
-                    Auto-download
-                  </div>
                 </div>
-                <p className="mt-2 text-xs text-zinc-500 px-1 italic">
-                  O áudio será extraído e processado automaticamente.
-                </p>
-              </div>
+              </motion.div>
             ) : (
-              <div className="relative h-full animate-in slide-in-from-left-4 duration-300">
-                <input 
+              <motion.div key="file" variants={fadeIn} initial="hidden" animate="show" exit="exit">
+                <input
                   ref={audioInputRef}
-                  type="file" accept="audio/*" required onChange={handleAudioChange}
+                  type="file" accept="audio/*"
                   className="hidden"
+                  onChange={e => handleAudioChange(e.target.files[0])}
                 />
-                <div 
+                <motion.div
+                  animate={{
+                    borderColor: isDragging ? '#1ED45E' : audioFile ? 'rgba(30, 212, 94, 0.3)' : 'rgba(255,255,255,0.06)',
+                    backgroundColor: isDragging ? 'rgba(30, 212, 94, 0.04)' : audioFile ? 'rgba(30, 212, 94, 0.03)' : 'rgba(255,255,255,0.015)',
+                    scale: isDragging ? 1.01 : 1,
+                  }}
+                  transition={{ duration: 0.18 }}
                   onClick={() => audioInputRef.current?.click()}
-                  className={`h-full min-h-[200px] rounded-3xl border border-dashed flex flex-col items-center justify-center gap-4 transition-all cursor-pointer ${
-                    audioFile 
-                      ? 'bg-indigo-500/5 border-indigo-500/40 text-indigo-400' 
-                      : 'bg-white/[0.02] border-white/10 text-zinc-500 hover:bg-white/[0.04] hover:border-white/20'
+                  onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
+                  className="w-full min-h-[140px] rounded-xl border border-dashed flex flex-col items-center justify-center gap-3 cursor-pointer"
+                >
+                  <AnimatePresence mode="wait">
+                    {audioFile ? (
+                      <motion.div key="has-file" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center gap-2 px-6 text-center">
+                        <div className="w-10 h-10 rounded-full bg-[#1ED45E]/15 flex items-center justify-center">
+                          <Music4 size={18} className="text-[#1ED45E]" />
+                        </div>
+                        <p className="text-xs font-medium text-white truncate max-w-[200px]">{audioFile.name}</p>
+                      </motion.div>
+                    ) : (
+                      <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-2 text-center px-6">
+                        <UploadIcon size={20} className="text-zinc-500" />
+                        <p className="text-xs font-medium text-zinc-400">Arraste ou clique para enviar áudio</p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* ── Capa ── */}
+          <motion.div variants={fadeUp}>
+            <label className="block text-[11px] uppercase tracking-widest font-semibold text-zinc-500 mb-2 px-0.5">
+              Arte da Capa <span className="normal-case tracking-normal font-normal text-zinc-600">(opcional)</span>
+            </label>
+            <input
+              ref={coverInputRef}
+              type="file" accept="image/*" className="hidden"
+              onChange={e => handleCoverChange(e.target.files[0])}
+            />
+            <div
+              onClick={() => coverInputRef.current?.click()}
+              className="flex items-center gap-4 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 cursor-pointer transition-colors"
+            >
+              <div className="w-12 h-12 rounded bg-zinc-800 flex items-center justify-center shrink-0 overflow-hidden">
+                {coverPreview ? <img src={coverPreview} className="w-full h-full object-cover" /> : <ImageIcon size={18} className="text-zinc-600" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-zinc-300 truncate">{coverFile ? coverFile.name : 'Escolher imagem'}</p>
+              </div>
+              {coverFile && (
+                <button type="button" onClick={removeCover} className="p-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700">
+                  <X size={14} className="text-zinc-400" />
+                </button>
+              )}
+            </div>
+          </motion.div>
+
+          <motion.div variants={fadeUp} className="h-px bg-zinc-900 my-2" />
+
+          {/* ── Legendas e Fundo ── */}
+          <motion.div variants={fadeUp} className="space-y-4">
+            <label className="block text-[11px] uppercase tracking-widest font-semibold text-zinc-500 px-0.5">
+              Legendas e Fundo
+            </label>
+            <div className="grid grid-cols-3 gap-2 p-1 bg-zinc-900 rounded-2xl">
+              {[
+                { id: 'none', label: 'Automática', icon: <AlignLeft size={14} /> },
+                { id: 'manual', label: 'Manual', icon: <Type size={14} /> },
+                { id: 'video', label: 'Vídeo', icon: <Video size={14} /> }
+              ].map(opt => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setSubtitleMode(opt.id)}
+                  className={`flex flex-col items-center gap-1.5 py-3 rounded-xl text-[11px] font-bold transition-all ${
+                    subtitleMode === opt.id 
+                      ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' 
+                      : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
-                  {audioFile ? (
-                    <>
-                      <div className="w-14 h-14 rounded-2xl bg-indigo-500/20 flex items-center justify-center">
-                        <Music4 size={28} className="text-indigo-400" />
-                      </div>
-                      <div className="text-center px-4">
-                        <p className="text-indigo-200 font-semibold truncate max-w-[200px]">{audioFile.name}</p>
-                        <p className="text-[10px] uppercase tracking-wider opacity-60">Toque para alterar</p>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <UploadIcon size={28} />
-                      </div>
-                      <div className="text-center">
-                        <p className="font-semibold text-zinc-300">Carregar Áudio</p>
-                        <p className="text-[11px] opacity-60">Arraste ou clique para selecionar (MP3, WAV)</p>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+                  {opt.icon}
+                  {opt.label}
+                </button>
+              ))}
+            </div>
 
-        {/* Cover Art Section */}
-        <div className="space-y-4">
-          <label className="block text-[11px] uppercase tracking-widest font-bold text-zinc-500 mb-2 px-1">
-            Arte da Capa (Opcional)
-          </label>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2">
-              <input 
-                ref={coverInputRef}
-                type="file" accept="image/*" onChange={e => setCoverFile(e.target.files[0])}
-                className="hidden"
-              />
-              <div 
-                onClick={() => coverInputRef.current?.click()}
-                className={`w-full py-10 rounded-2xl border border-dashed flex items-center gap-6 px-8 transition-all cursor-pointer ${
-                  coverFile 
-                    ? 'bg-emerald-500/5 border-emerald-500/40 text-emerald-400' 
-                    : 'bg-white/[0.02] border-white/10 text-zinc-500 hover:bg-white/[0.04] hover:border-white/20'
-                }`}
-              >
-                <div className={`w-20 h-20 rounded-xl flex items-center justify-center shrink-0 ${
-                  coverFile ? 'bg-emerald-500/10' : 'bg-white/5'
-                }`}>
-                  {coverFile ? (
-                    <img 
-                      src={URL.createObjectURL(coverFile)} 
-                      alt="Preview" 
-                      className="w-full h-full object-cover rounded-xl"
-                    />
-                  ) : (
-                    <ImageIcon size={32} />
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <p className="font-semibold text-zinc-300 truncate">
-                    {coverFile ? coverFile.name : 'Escolher uma imagem'}
-                  </p>
-                  <p className="text-[11px] opacity-60">Ideal: 1:1, JPG ou PNG de alta resolução</p>
-                </div>
-                {coverFile && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); setCoverFile(null); if(coverInputRef.current) coverInputRef.current.value = '' }}
-                    className="ml-auto p-2 hover:bg-white/10 rounded-full text-zinc-400"
+            <AnimatePresence mode="wait">
+              {subtitleMode === 'manual' && (
+                <motion.div key="manual" variants={fadeIn} initial="hidden" animate="show" exit="exit" className="space-y-3">
+                  <textarea
+                    value={manualText}
+                    onChange={e => setManualText(e.target.value)}
+                    placeholder="Cole a letra da música aqui..."
+                    className="w-full h-32 px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-red-500 transition-all resize-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const lines = manualText.split('\n').filter(l => l.trim()).map((text, i) => ({
+                        time: i * 3.5,
+                        text: text.trim()
+                      }))
+                      setSubtitleData(lines)
+                      setMessage({ type: 'success', text: 'Letra processada!' })
+                    }}
+                    className="w-full py-2.5 bg-red-500/10 text-red-500 rounded-xl text-xs font-bold hover:bg-red-500/20 transition-colors"
                   >
-                    <X size={16} />
+                    Confirmar Letra
                   </button>
-                )}
-              </div>
-            </div>
-            
-            <div className="flex items-center">
-              <button 
-                type="submit" disabled={loading}
-                className="w-full h-full min-h-[60px] bg-white text-black font-extrabold rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-white/5 disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2 text-lg"
-              >
-                {loading ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin"></div>
-                    <span>{useLink ? 'Extraindo áudio...' : 'Enviando...'}</span>
+                </motion.div>
+              )}
+
+              {subtitleMode === 'video' && (
+                <motion.div key="video" variants={fadeIn} initial="hidden" animate="show" exit="exit">
+                  <div className="relative">
+                    <Video size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" />
+                    <input
+                      type="url"
+                      value={subtitleVideoUrl}
+                      onChange={e => setSubtitleVideoUrl(e.target.value)}
+                      placeholder="URL do YouTube ou TikTok"
+                      className="w-full pl-10 pr-4 py-3.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-red-500 transition-all"
+                    />
                   </div>
-                ) : (
-                  <>Enviar Música</>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
+                </motion.div>
+              )}
+
+              {subtitleMode === 'none' && (
+                <motion.div key="none" variants={fadeIn} initial="hidden" animate="show" exit="exit" className="p-4 bg-zinc-900/50 rounded-xl border border-zinc-800 text-center">
+                  <p className="text-xs text-zinc-500 italic">Busca automática via LRCLIB ativada.</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+
+          <motion.div variants={fadeUp} className="h-px bg-zinc-900 my-2" />
+
+          {/* ── Visibilidade ── */}
+          <motion.div variants={fadeUp}>
+            <button
+              type="button"
+              onClick={() => setIsPublic(p => !p)}
+              className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl border text-left transition-all ${
+                isPublic ? 'bg-[#1ED45E]/5 border-[#1ED45E]/20' : 'bg-zinc-900/50 border-zinc-800'
+              }`}
+            >
+              <div className={`w-10 h-6 rounded-full relative transition-colors ${isPublic ? 'bg-[#1ED45E]' : 'bg-zinc-800'}`}>
+                <motion.div animate={{ x: isPublic ? 18 : 2 }} className="w-4 h-4 rounded-full bg-white absolute top-1" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-white flex items-center gap-2">
+                  {isPublic ? <><Globe size={13} className="text-[#1ED45E]" /> Público</> : <><Lock size={13} className="text-zinc-500" /> Privado</>}
+                </p>
+              </div>
+            </button>
+          </motion.div>
+
+          {/* ── Submit ── */}
+          <motion.div variants={fadeUp} className="pt-4">
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-4 rounded-full bg-[#1ED45E] text-black font-extrabold text-sm flex items-center justify-center gap-2 shadow-xl shadow-[#1ED45E]/10 h-14"
+            >
+              {loading ? (
+                <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+              ) : 'Enviar música'}
+            </button>
+          </motion.div>
+
+        </motion.div>
       </form>
     </div>
   )

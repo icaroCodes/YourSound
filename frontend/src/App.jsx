@@ -10,6 +10,8 @@ import Playlists from './pages/Playlists'
 import PlaylistDetails from './pages/PlaylistDetails'
 import LikedSongs from './pages/LikedSongs'
 import Admin from './pages/Admin'
+import Profile from './pages/Profile'
+import Dialog from './components/Dialog'
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { session, userProfile, isLoading } = useAuthStore()
@@ -153,6 +155,8 @@ export default function App() {
   }
 
   return (
+    <>
+    <Dialog />
     <Router>
       <Routes>
         <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
@@ -164,6 +168,7 @@ export default function App() {
           <Route path="liked" element={<LikedSongs />} />
           <Route path="playlists" element={<Playlists />} />
           <Route path="playlists/:id" element={<PlaylistDetails />} />
+          <Route path="profile" element={<Profile />} />
           <Route path="admin" element={
             <ProtectedRoute adminOnly={true}>
               <Admin />
@@ -172,5 +177,6 @@ export default function App() {
         </Route>
       </Routes>
     </Router>
+    </>
   )
 }

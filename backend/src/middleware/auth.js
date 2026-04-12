@@ -10,6 +10,10 @@ const { supabase } = require('../config/supabase');
  */
 const verifyAuth = async (req, res, next) => {
   try {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Serviço indisponível — configuração do Supabase ausente.' });
+    }
+
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'Token de autenticação ausente.' });

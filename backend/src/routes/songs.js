@@ -3,10 +3,11 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const router = express.Router();
 const axios = require('axios');
 const ffmpegPath = require('ffmpeg-static');
+const ytdl = require('@distube/ytdl-core');
 
 // music-metadata v11+ is ESM-only — must use dynamic import() in CommonJS
 let _mm = null;
@@ -157,6 +158,17 @@ router.post(
       const title = sanitizeString(req.body.title, 100);
       const artist = sanitizeString(req.body.artist, 100);
       const isPublic = req.body.is_public === 'true';
+      const subtitleMode = req.body.subtitle_mode || 'none';
+      const subtitleVideoUrl = req.body.subtitle_video_url || null;
+      let subtitleData = null;
+
+      try {
+        if (req.body.subtitle_data) {
+          subtitleData = JSON.parse(req.body.subtitle_data);
+        }
+      } catch (e) {
+        console.error('Error parsing subtitle_data:', e);
+      }
 
       // --- Validation ---
       if (!title || !artist) {
@@ -171,8 +183,8 @@ router.post(
 
       // Validate audio mime type against whitelist
       if (!ALLOWED_AUDIO_MIMES.includes(audioFile.mimetype)) {
-        return res.status(400).json({ 
-          error: `Tipo de áudio não permitido: ${audioFile.mimetype}. Envie MP3, WAV, OGG, AAC, FLAC ou M4A.` 
+        return res.status(400).json({
+          error: `Tipo de áudio não permitido: ${audioFile.mimetype}. Envie MP3, WAV, OGG, AAC, FLAC ou M4A.`
         });
       }
 
@@ -249,6 +261,9 @@ router.post(
           user_id: req.userId,
           is_public: isPublic,
           status: isPublic ? 'pending' : 'approved',
+          subtitle_mode: subtitleMode,
+          subtitle_data: subtitleData,
+          subtitle_video_url: subtitleVideoUrl,
           ...(duration != null ? { duration } : {})
         })
         .select()
@@ -256,9 +271,9 @@ router.post(
 
       if (dbError) throw dbError;
 
-      res.status(201).json({ 
-        message: isPublic 
-          ? 'Música enviada! Aguardando aprovação do admin.' 
+      res.status(201).json({
+        message: isPublic
+          ? 'Música enviada! Aguardando aprovação do admin.'
           : 'Música privada adicionada com sucesso!',
         song: songData
       });
@@ -300,7 +315,7 @@ router.post(
     const tempFiles = [];
     const cleanup = () => {
       clearTimeout(timer);
-      tempFiles.forEach(f => { try { fs.unlinkSync(f); } catch {} });
+      tempFiles.forEach(f => { try { fs.unlinkSync(f); } catch { } });
     };
 
     try {
@@ -311,6 +326,17 @@ router.post(
       const artist = sanitizeString(req.body.artist, 100);
       const isPublic = req.body.is_public === 'true';
       const url = req.body.url;
+      const subtitleMode = req.body.subtitle_mode || 'none';
+      const subtitleVideoUrl = req.body.subtitle_video_url || null;
+      let subtitleData = null;
+
+      try {
+        if (req.body.subtitle_data) {
+          subtitleData = JSON.parse(req.body.subtitle_data);
+        }
+      } catch (e) {
+        console.error('Error parsing subtitle_data:', e);
+      }
 
       if (!title || !artist || !url) {
         cleanup();
@@ -430,6 +456,9 @@ router.post(
           user_id: req.userId,
           is_public: isPublic,
           status: isPublic ? 'pending' : 'approved',
+          subtitle_mode: subtitleMode,
+          subtitle_data: subtitleData,
+          subtitle_video_url: subtitleVideoUrl,
           ...(duration != null ? { duration } : {})
         })
         .select()
@@ -452,5 +481,122 @@ router.post(
     }
   }
 );
+
+/**
+ * PATCH /api/songs/:id/subtitle
+ * Update subtitle settings for a song the user owns.
+ */
+router.patch('/:id/subtitle', verifyAuth, async (req, res) => {
+  try {
+    const songId = req.params.id;
+    const { subtitle_mode, subtitle_data, subtitle_video_url } = req.body;
+
+    if (!['none', 'manual', 'video'].includes(subtitle_mode)) {
+      return res.status(400).json({ error: 'subtitle_mode inválido. Use "none", "manual" ou "video".' });
+    }
+
+    if (subtitle_mode === 'manual' && (!subtitle_data || !Array.isArray(subtitle_data) || subtitle_data.length === 0)) {
+      return res.status(400).json({ error: 'subtitle_data é obrigatório para modo manual.' });
+    }
+
+    if (subtitle_mode === 'video' && !subtitle_video_url) {
+      return res.status(400).json({ error: 'subtitle_video_url é obrigatório para modo vídeo.' });
+    }
+
+    const updates = { subtitle_mode };
+    if (subtitle_mode === 'manual') {
+      updates.subtitle_data = subtitle_data;
+      updates.subtitle_video_url = null;
+    } else if (subtitle_mode === 'video') {
+      updates.subtitle_video_url = subtitle_video_url;
+      updates.subtitle_data = null;
+    } else {
+      updates.subtitle_data = null;
+      updates.subtitle_video_url = null;
+    }
+
+    const { data, error } = await supabase
+      .from('songs')
+      .update(updates)
+      .eq('id', songId)
+      .eq('user_id', req.userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Música não encontrada ou sem permissão.' });
+
+    res.json({ success: true, song: data });
+  } catch (err) {
+    console.error('[PATCH /songs/:id/subtitle]', err.message);
+    res.status(500).json({ error: err.message || 'Erro ao atualizar legenda.' });
+  }
+});
+
+/**
+ * GET /api/songs/proxy-stream
+ * Proxies media streams from YouTube/TikTok using ytdl-core or yt-dlp.
+ */
+router.get('/proxy-stream', async (req, res) => {
+  const { url, type = 'video', start = 0 } = req.query;
+
+  if (!url) return res.status(400).send('URL is required');
+
+  console.log(`[PROXY-STREAM] Starting stream: ${url} (${type}) at ${start}s`);
+
+  try {
+    const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+
+    if (isYouTube) {
+      // 1. YouTube specialized streaming
+      const stream = ytdl(url, {
+        filter: type === 'video' ? 'videoandaudio' : 'audioonly',
+        quality: type === 'video' ? '18' /* 360p mp4 */ : 'highestaudio',
+        begin: start > 0 ? `${start}s` : undefined, // ytdl-core supports begin
+        highWaterMark: 1 << 25
+      });
+
+      stream.on('error', (err) => {
+        console.error('[PROXY-STREAM] YTDL Error:', err.message);
+        if (!res.headersSent) res.status(500).send('Stream error');
+      });
+
+      res.setHeader('Content-Type', type === 'video' ? 'video/mp4' : 'audio/mp4');
+      stream.pipe(res);
+    } else {
+      // 2. Others (TikTok, etc.) via yt-dlp
+      res.setHeader('Content-Type', type === 'video' ? 'video/mp4' : 'audio/mpeg');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Transfer-Encoding', 'chunked');
+
+      // Use --external-downloader ffmpeg to seek in the stream
+      const args = [
+        url,
+        '-f', type === 'video' ? 'best[ext=mp4]/best' : 'bestaudio/best',
+        '-o', '-',
+        '--no-playlist',
+        '--no-warnings',
+        '--quiet'
+      ];
+
+      if (start > 0) {
+        // Simple seek using ffmpeg as external downloader
+        args.push('--external-downloader', 'ffmpeg');
+        args.push('--external-downloader-args', `ffmpeg:-ss ${start}`);
+      }
+
+      const ytProcess = spawn(ytdlpBin, args);
+      ytProcess.stdout.pipe(res);
+      ytProcess.on('error', (err) => {
+        console.error('[PROXY-STREAM] Process error:', err);
+        if (!res.headersSent) res.status(500).send('Stream error');
+      });
+      req.on('close', () => ytProcess.kill('SIGTERM'));
+    }
+  } catch (err) {
+    console.error('[PROXY-STREAM] Catch error:', err.message);
+    if (!res.headersSent) res.status(500).send('Failed');
+  }
+});
 
 module.exports = router;

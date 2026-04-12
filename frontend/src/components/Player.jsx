@@ -5,10 +5,12 @@ import { useLikeStore } from '../store/useLikeStore'
 import { audioManager } from '../lib/audioRef'
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Shuffle, Repeat, Mic2, ListMusic, MonitorSpeaker, Maximize2, Heart, PictureInPicture2, X, PlusCircle } from 'lucide-react'
 import AddToPlaylistModal from './AddToPlaylistModal'
+import { useDialogStore } from '../store/useDialogStore'
 
 export default function Player() {
   const { currentSong, isPlaying, togglePlay, next, previous, volume, setVolume, queue, playSong, isQueueOpen, toggleQueue, isLyricsOpen, toggleLyrics, repeatMode, toggleRepeat } = usePlayerStore()
   const { isLiked } = useLikeStore()
+  const { showAlert } = useDialogStore()
   const audioRef = useRef(null)
   const fadeInterval = useRef(null)
   const isInitialLoadRef = useRef(true)
@@ -186,7 +188,7 @@ export default function Player() {
     }
 
     if (!('documentPictureInPicture' in window)) {
-      alert('Seu navegador não suporta a API de Picture-in-Picture para documentos.')
+      await showAlert('Seu navegador não suporta Picture-in-Picture.', { title: 'Não suportado', icon: 'info' })
       return
     }
 

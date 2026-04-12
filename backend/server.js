@@ -4,7 +4,7 @@
 
 // ── 1. Load .env FIRST — explicit path for monorepo compatibility ───
 const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '.env'), override: true });
 
 const http = require('http');
 const express = require('express');

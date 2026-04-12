@@ -4,6 +4,42 @@ const { supabase } = require('../config/supabase');
 const { verifyAuth } = require('../middleware/auth');
 
 /**
+ * PATCH /me/profile
+ * Atualiza display_name e avatar_url do usuário autenticado.
+ */
+router.patch('/me/profile', verifyAuth, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { display_name, avatar_url } = req.body;
+
+    const updates = {};
+    if (display_name !== undefined) updates.display_name = display_name || null;
+    if (avatar_url !== undefined) updates.avatar_url = avatar_url || null;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'Nenhum campo para atualizar.' });
+    }
+
+    const { data, error } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', userId)
+      .select('id, email, role, display_name, avatar_url')
+      .single();
+
+    if (error) {
+      console.error('[UPDATE PROFILE ERROR]', error.message);
+      return res.status(500).json({ error: 'Erro ao atualizar perfil.' });
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.error('[UPDATE PROFILE ERROR]', err.message);
+    res.status(500).json({ error: 'Erro interno ao atualizar perfil.' });
+  }
+});
+
+/**
  * DELETE /me
  * Authenticated users can delete their own account.
  * This removes them from Supabase Auth and our public.users table (via cascade if set up, or explicitly here).

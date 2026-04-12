@@ -4,7 +4,7 @@ import { audioManager } from '../lib/audioRef'
 import { fetchLyrics } from '../lib/lyrics'
 import { Mic2 } from 'lucide-react'
 
-export default function Lyrics() {
+export default function Lyrics({ centered = false }) {
   const currentSong = usePlayerStore(s => s.currentSong)
 
   const [lines, setLines] = useState(null)
@@ -33,28 +33,31 @@ export default function Lyrics() {
     setActiveIndex(-1)
     lastScrolledIndex.current = -1
 
+    // Manual lyrics support
+    if (currentSong.subtitle_mode === 'manual' && currentSong.subtitle_data) {
+      setLines(currentSong.subtitle_data)
+      setLoading(false)
+      return
+    }
+
     const doFetch = (audioDuration) => {
       if (cancelled) return
 
       fetchLyrics(currentSong.artist, currentSong.title, audioDuration)
         .then(({ synced, plain, lrcDuration }) => {
           if (cancelled) return
-
           if (!synced && !plain) { setError(true); return }
 
           if (synced && lrcDuration > 0 && audioDuration > 0) {
             const ratio = audioDuration / lrcDuration
-            // If durations differ by more than 3%, scale all timestamps
             if (Math.abs(ratio - 1) > 0.03) {
-              const scaled = synced.map(l => ({ ...l, time: l.time * ratio }))
-              setLines(scaled)
+              setLines(synced.map(l => ({ ...l, time: l.time * ratio })))
             } else {
               setLines(synced)
             }
           } else {
             setLines(synced)
           }
-
           setPlain(plain)
         })
         .catch(() => { if (!cancelled) setError(true) })
@@ -62,34 +65,23 @@ export default function Lyrics() {
     }
 
     const audio = audioManager.element
-
-    // If audio already has duration for this song, use it immediately
     if (audio && audio.src && isFinite(audio.duration) && audio.duration > 0) {
       doFetch(audio.duration)
     } else if (audio) {
-      // Wait for audio to load metadata so we get the real duration
       const onReady = () => {
-        if (!cancelled && isFinite(audio.duration)) {
-          doFetch(audio.duration)
-        }
+        if (!cancelled && isFinite(audio.duration)) doFetch(audio.duration)
         audio.removeEventListener('loadedmetadata', onReady)
         audio.removeEventListener('durationchange', onReady)
       }
       audio.addEventListener('loadedmetadata', onReady)
       audio.addEventListener('durationchange', onReady)
-
-      return () => {
-        cancelled = true
-        audio.removeEventListener('loadedmetadata', onReady)
-        audio.removeEventListener('durationchange', onReady)
-      }
+      return () => { cancelled = true; audio.removeEventListener('loadedmetadata', onReady); audio.removeEventListener('durationchange', onReady) }
     } else {
-      // No audio element yet, use song metadata
       doFetch(currentSong.duration || 0)
     }
 
     return () => { cancelled = true }
-  }, [currentSong?.id])
+  }, [currentSong?.id, currentSong?.subtitle_mode, currentSong?.subtitle_data])
 
   // RAF loop: read audio.currentTime directly for frame-accurate sync
   const tick = useCallback(() => {
@@ -100,17 +92,17 @@ export default function Lyrics() {
       return
     }
 
-   const delay = 7.5// atraso em segundos
-const t = audio.currentTime - delay
-let idx = -1
-for (let i = 0; i < syncedLines.length; i++) {
-  if (t >= syncedLines[i].time) idx = i
-  else break
-}
+    const delay = currentSong?.subtitle_mode === 'manual' ? 0 : 7.5
+    const t = audio.currentTime - delay
+    let idx = -1
+    for (let i = 0; i < syncedLines.length; i++) {
+      if (t >= syncedLines[i].time) idx = i
+      else break
+    }
 
     setActiveIndex(prev => prev === idx ? prev : idx)
     rafRef.current = requestAnimationFrame(tick)
-  }, [])
+  }, [currentSong?.subtitle_mode])
 
   useEffect(() => {
     rafRef.current = requestAnimationFrame(tick)
@@ -154,9 +146,10 @@ for (let i = 0; i < syncedLines.length; i++) {
     return (
       <div
         ref={containerRef}
-        className="h-full overflow-y-auto px-6 py-8 scroll-smooth custom-scrollbar"
+        className="h-full overflow-y-auto scroll-smooth custom-scrollbar"
+        style={{ padding: centered ? '3rem 2rem' : '2rem 1.5rem' }}
       >
-        <div className="flex flex-col gap-1 pb-40">
+        <div className={`flex flex-col gap-1 pb-40 ${centered ? 'items-center text-center' : ''}`}>
           {lines.map((line, i) => {
             const isActive = i === activeIndex
             const isPast = i < activeIndex
@@ -166,9 +159,11 @@ for (let i = 0; i < syncedLines.length; i++) {
               <p
                 key={i}
                 ref={el => lineRefs.current[i] = el}
-                className={`text-[22px] font-bold leading-relaxed transition-all duration-300 cursor-default select-none ${
+                className={`font-bold leading-relaxed transition-all duration-300 cursor-default select-none ${
+                  centered ? 'text-[28px]' : 'text-[22px]'
+                } ${
                   isActive
-                    ? 'text-white scale-[1.02] origin-left'
+                    ? 'text-white scale-[1.02] origin-center'
                     : isPast
                       ? 'text-zinc-600'
                       : 'text-zinc-500'

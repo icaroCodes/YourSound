@@ -1,9 +1,8 @@
 import { usePlayerStore } from '../store/usePlayerStore'
 import { MoreHorizontal, X, Play } from 'lucide-react'
-import Lyrics from './Lyrics'
 
 export default function RightPanel() {
-  const { currentSong, queue, isQueueOpen, toggleQueue, isLyricsOpen, toggleLyrics, playSong } = usePlayerStore()
+  const { currentSong, queue, isQueueOpen, toggleQueue, playSong } = usePlayerStore()
 
   if (!currentSong) {
     return (
@@ -18,21 +17,6 @@ export default function RightPanel() {
   const currentIndex = queue?.findIndex(s => s.id === currentSong.id) ?? -1
   const nextSongs = currentIndex >= 0 && queue ? queue.slice(currentIndex + 1, currentIndex + 11) : []
   const nextSong = nextSongs.length > 0 ? nextSongs[0] : null
-
-  if (isLyricsOpen) {
-    return (
-      <div className="h-full flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 pt-4 pb-2 shrink-0">
-          <h3 className="text-white font-bold text-lg tracking-tight">{currentSong.title}</h3>
-          <button onClick={toggleLyrics} className="text-zinc-400 hover:text-white transition rounded-full hover:bg-white/10 p-1" title="Fechar letras">
-            <X size={20} />
-          </button>
-        </div>
-        <Lyrics />
-      </div>
-    )
-  }
 
   if (isQueueOpen) {
     return (

@@ -62,7 +62,7 @@ export const api = {
     return handleResponse(res);
   },
 
-  async uploadSong({ title, artist, isPublic, audioFile, coverFile }) {
+  async uploadSong({ title, artist, isPublic, audioFile, coverFile, subtitleMode, subtitleData, subtitleVideoUrl }) {
     const headers = getAuthHeaders();
     
     const formData = new FormData();
@@ -73,6 +73,9 @@ export const api = {
     if (coverFile) {
       formData.append('cover', coverFile);
     }
+    if (subtitleMode) formData.append('subtitle_mode', subtitleMode);
+    if (subtitleData) formData.append('subtitle_data', JSON.stringify(subtitleData));
+    if (subtitleVideoUrl) formData.append('subtitle_video_url', subtitleVideoUrl);
 
     const res = await fetch(`${API_BASE}/api/songs/upload`, {
       method: 'POST',
@@ -82,7 +85,7 @@ export const api = {
     return handleResponse(res);
   },
 
-  async uploadSongFromLink({ title, artist, isPublic, url, coverFile }) {
+  async uploadSongFromLink({ title, artist, isPublic, url, coverFile, subtitleMode, subtitleData, subtitleVideoUrl }) {
     const headers = getAuthHeaders();
 
     const formData = new FormData();
@@ -93,6 +96,9 @@ export const api = {
     if (coverFile) {
       formData.append('cover', coverFile);
     }
+    if (subtitleMode) formData.append('subtitle_mode', subtitleMode);
+    if (subtitleData) formData.append('subtitle_data', JSON.stringify(subtitleData));
+    if (subtitleVideoUrl) formData.append('subtitle_video_url', subtitleVideoUrl);
 
     const res = await fetch(`${API_BASE}/api/songs/from-link`, {
       method: 'POST',
@@ -200,6 +206,17 @@ export const api = {
     return handleResponse(res);
   },
 
+  // ── Subtitles ─────────────────────────────
+  async updateSongSubtitle(songId, { subtitle_mode, subtitle_data, subtitle_video_url }) {
+    const headers = getAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/songs/${songId}/subtitle`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subtitle_mode, subtitle_data, subtitle_video_url })
+    });
+    return handleResponse(res);
+  },
+
   // ── Admin ──────────────────────────────────
   async getPendingSongs() {
     const headers = getAuthHeaders();
@@ -259,6 +276,16 @@ export const api = {
   },
 
   // ── User ───────────────────────────────────
+  async updateProfile({ display_name, avatar_url }) {
+    const headers = getAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/users/me/profile`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ display_name, avatar_url })
+    });
+    return handleResponse(res);
+  },
+
   async deleteAccount() {
     const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/users/me`, {

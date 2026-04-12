@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '../store/useAuthStore'
 import { usePlayerStore } from '../store/usePlayerStore'
+import { useDialogStore } from '../store/useDialogStore'
 import { api } from '../lib/api'
 import { Play, Check, X, BarChart3, Users, Music2, ListMusic, Pencil, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -8,6 +9,7 @@ import { useNavigate } from 'react-router-dom'
 export default function Admin() {
   const { userProfile } = useAuthStore()
   const { playSong } = usePlayerStore()
+  const { showAlert, showConfirm } = useDialogStore()
   const navigate = useNavigate()
   
   const [activeTab, setActiveTab] = useState('pending') // 'pending' | 'all'
@@ -20,6 +22,10 @@ export default function Admin() {
   const [editSong, setEditSong] = useState(null)
   const [editTitle, setEditTitle] = useState('')
   const [editArtist, setEditArtist] = useState('')
+  const [editSubtitleMode, setEditSubtitleMode] = useState('none')
+  const [editSubtitleData, setEditSubtitleData] = useState([])
+  const [editSubtitleVideoUrl, setEditSubtitleVideoUrl] = useState('')
+  const [editManualText, setEditManualText] = useState('')
   const [savingAction, setSavingAction] = useState(false)
 
   // Feedback Messages
@@ -80,6 +86,10 @@ export default function Admin() {
     setEditSong(song)
     setEditTitle(song.title)
     setEditArtist(song.artist)
+    setEditSubtitleMode(song.subtitle_mode || 'none')
+    setEditSubtitleData(song.subtitle_data || [])
+    setEditSubtitleVideoUrl(song.subtitle_video_url || '')
+    setEditManualText(song.subtitle_data ? song.subtitle_data.map(l => l.text).join('\n') : '')
   }
 
   const handleSaveEdit = async () => {
@@ -87,21 +97,33 @@ export default function Admin() {
 
     setSavingAction(true)
     try {
-      await api.editAdminSong(editSong.id, { title: editTitle, artist: editArtist })
-      setAllSongs(allSongs.map(s => s.id === editSong.id ? { ...s, title: editTitle, artist: editArtist } : s))
-      setPendingSongs(pendingSongs.map(s => s.id === editSong.id ? { ...s, title: editTitle, artist: editArtist } : s))
+      const data = { 
+        title: editTitle, 
+        artist: editArtist,
+        subtitle_mode: editSubtitleMode,
+        subtitle_data: editSubtitleMode === 'manual' ? editSubtitleData : null,
+        subtitle_video_url: editSubtitleMode === 'video' ? editSubtitleVideoUrl : null
+      }
+      await api.editAdminSong(editSong.id, data)
+      const updatedSong = { ...editSong, ...data }
+      setAllSongs(allSongs.map(s => s.id === editSong.id ? updatedSong : s))
+      setPendingSongs(pendingSongs.map(s => s.id === editSong.id ? updatedSong : s))
       setEditSong(null)
       showFeedback('Música editada com sucesso.')
     } catch (err) {
       console.error('[Admin] Edit error:', err.message)
-      alert("Erro ao editar música")
+      await showAlert('Não foi possível editar a música. Tente novamente.', { title: 'Erro', icon: 'error' })
     } finally {
       setSavingAction(false)
     }
   }
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Atenção! Você tem certeza que deseja excluir esta música publicamente? Ela será deletada para todos.")) return
+    const confirmed = await showConfirm(
+      'Esta música será deletada permanentemente para todos os usuários.',
+      { title: 'Excluir música', confirmText: 'Excluir', destructive: true }
+    )
+    if (!confirmed) return
 
     try {
       await api.deleteAdminSong(id)
@@ -111,7 +133,7 @@ export default function Admin() {
       showFeedback('Música deletada permanentemente.')
     } catch (err) {
       console.error('[Admin] Delete error:', err.message)
-      alert("Erro ao excluir música")
+      await showAlert('Não foi possível excluir a música. Tente novamente.', { title: 'Erro', icon: 'error' })
     }
   }
 
@@ -239,6 +261,50 @@ export default function Admin() {
                     placeholder="Nome do artista"
                     disabled={savingAction}
                   />
+                </div>
+
+                <div className="pt-2 space-y-3">
+                  <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">Legendas / Fundo</label>
+                  <select 
+                    value={editSubtitleMode} 
+                    onChange={e => setEditSubtitleMode(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="none">Automática (LRCLIB)</option>
+                    <option value="manual">Manual Sincronizada</option>
+                    <option value="video">Vídeo de Fundo</option>
+                  </select>
+
+                  {editSubtitleMode === 'manual' && (
+                    <div className="space-y-2">
+                      <textarea
+                        value={editManualText}
+                        onChange={e => setEditManualText(e.target.value)}
+                        placeholder="Cole a letra..."
+                        className="w-full h-24 bg-black/40 border border-white/10 rounded-md py-2 px-3 text-white text-xs resize-none"
+                      />
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const lines = editManualText.split('\n').filter(l => l.trim()).map((t, i) => ({ time: i * 3.5, text: t.trim() }))
+                          setEditSubtitleData(lines)
+                        }}
+                        className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase transition"
+                      >
+                        Processar Letras
+                      </button>
+                    </div>
+                  )}
+
+                  {editSubtitleMode === 'video' && (
+                    <input
+                      type="url"
+                      value={editSubtitleVideoUrl}
+                      onChange={e => setEditSubtitleVideoUrl(e.target.value)}
+                      placeholder="URL do YT/TikTok"
+                      className="w-full bg-black/40 border border-white/10 rounded-md py-2 px-3 text-white text-sm"
+                    />
+                  )}
                 </div>
 
                 <div className="pt-4 flex justify-end gap-3">

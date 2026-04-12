@@ -161,9 +161,9 @@ export default function Sidebar({ collapsed, toggleSidebar }) {
 
               {userProfile?.role === 'admin' && (
                 <>
-                  <button onClick={() => setAdminModalOpen(true)} className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-indigo-400 hover:text-indigo-300 relative" title="Notificações / Pedidos">
+                  <button onClick={() => setAdminModalOpen(true)} className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-zinc-400 hover:text-white relative" title="Notificações / Pedidos">
                     <Bell size={20} />
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-indigo-500 rounded-full border border-zinc-900"></span>
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-spotify-green rounded-full border border-zinc-900"></span>
                   </button>
                   {adminModalOpen && <AdminRequestsModal onClose={() => setAdminModalOpen(false)} />}
                 </>
@@ -234,7 +234,7 @@ export default function Sidebar({ collapsed, toggleSidebar }) {
             className={`flex items-center p-2 rounded-md hover:bg-white/[0.07] transition-colors cursor-pointer ${collapsed ? 'justify-center mb-1' : 'gap-3'}`}
             title="Músicas Curtidas"
           >
-            <div className="w-12 h-12 bg-gradient-to-br from-[#450af5] to-[#8e8ee5] flex items-center justify-center rounded shadow shrink-0">
+            <div className="w-12 h-12 bg-linear-to-br from-spotify-green to-[#0d9e42] flex items-center justify-center rounded shadow shrink-0">
               <svg role="img" height="14" width="14" viewBox="0 0 16 16" fill="white"><path d="M15.724 4.22A4.313 4.313 0 0 0 12.192.814a4.269 4.269 0 0 0-3.622 1.13.837.837 0 0 1-1.14 0 4.272 4.272 0 0 0-6.21 5.855l5.916 7.05a1.128 1.128 0 0 0 1.727 0l5.916-7.05a4.228 4.228 0 0 0 .945-3.577z"></path></svg>
             </div>
             {!collapsed && (

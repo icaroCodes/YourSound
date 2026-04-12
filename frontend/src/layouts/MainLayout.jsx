@@ -4,6 +4,8 @@ import Sidebar from '../components/Sidebar'
 import Navbar from '../components/Navbar'
 import RightPanel from '../components/RightPanel'
 import Player from '../components/Player'
+import LyricsOverlay from '../components/LyricsOverlay'
+import { usePlayerStore } from '../store/usePlayerStore'
 
 const MIN_SIDEBAR = 200
 const MAX_SIDEBAR = 500
@@ -11,6 +13,7 @@ const MIN_RIGHT = 200
 const MAX_RIGHT = 500
 
 export default function MainLayout() {
+  const { isLyricsOpen, toggleLyrics, currentSong } = usePlayerStore()
   const [leftWidth, setLeftWidth] = useState(300)
   const [rightWidth, setRightWidth] = useState(300)
   const [dragging, setDragging] = useState(null) // 'left' | 'right' | null
@@ -94,8 +97,15 @@ export default function MainLayout() {
         )}
 
         {/* Center Content */}
-        <main className="flex-1 bg-spotify-panel rounded-lg overflow-y-auto custom-scrollbar min-w-0">
-          <Outlet />
+        <main className="flex-1 rounded-lg overflow-hidden min-w-0 relative">
+          {/* Normal page content */}
+          <div className={`h-full overflow-y-auto custom-scrollbar bg-spotify-panel ${isLyricsOpen && currentSong ? 'hidden' : ''}`}>
+            <Outlet />
+          </div>
+          {/* Lyrics replaces center content */}
+          {isLyricsOpen && currentSong && (
+            <LyricsOverlay />
+          )}
         </main>
 
         {/* Right resize handle */}
@@ -119,6 +129,7 @@ export default function MainLayout() {
       <div className="h-20 shrink-0 w-full px-2 py-2">
         <Player />
       </div>
+
     </div>
   )
 }

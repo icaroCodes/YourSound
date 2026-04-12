@@ -55,10 +55,10 @@ export default function LikedSongs() {
       {/* ─── Purple Gradient Header ─── */}
       <div
         className="px-6 pt-12 pb-6 flex items-end gap-6"
-        style={{ background: 'linear-gradient(to bottom, #5038a0 0%, #321e6e 50%, #121212 100%)' }}
+        style={{ background: 'linear-gradient(to bottom, #0a2818 0%, #0d1f13 50%, #121212 100%)' }}
       >
         {/* Cover — purple gradient with heart */}
-        <div className="w-57.5 h-57.5 rounded shadow-2xl shrink-0 overflow-hidden bg-linear-to-br from-[#7b5ea7] to-[#3d2278] flex items-center justify-center">
+        <div className="w-57.5 h-57.5 rounded shadow-2xl shrink-0 overflow-hidden bg-linear-to-br from-spotify-green to-[#0d9e42] flex items-center justify-center">
           <Heart size={80} fill="white" stroke="none" />
         </div>
 

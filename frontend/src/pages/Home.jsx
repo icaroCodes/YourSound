@@ -65,13 +65,6 @@ export default function Home() {
 
   return (
     <div className="relative pb-10">
-      {/* Sticky Filter Header */}
-      <div className="sticky top-0 z-10 bg-[#121212]/95 backdrop-blur-md px-6 py-3 flex items-center gap-2">
-        <button className="px-4 py-1.5 bg-white text-black font-medium text-sm rounded-full transition hover:scale-105">Tudo</button>
-        <button className="px-4 py-1.5 bg-white/10 text-white font-medium text-sm rounded-full transition hover:bg-white/20">Música</button>
-        <button className="px-4 py-1.5 bg-white/10 text-white font-medium text-sm rounded-full transition hover:bg-white/20">Podcasts</button>
-      </div>
-
       <div className="px-6 mt-4 space-y-10">
 
         {/* Recent Grid */}

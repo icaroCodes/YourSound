@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { X, Check, Trash2 } from 'lucide-react'
 import { api } from '../lib/api'
+import { useDialogStore } from '../store/useDialogStore'
 
 export default function AdminRequestsModal({ onClose }) {
   const [songs, setSongs] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const { showAlert } = useDialogStore()
 
   useEffect(() => {
     loadSongs()
@@ -30,7 +32,7 @@ export default function AdminRequestsModal({ onClose }) {
       setSongs(prev => prev.filter(s => s.id !== songId))
     } catch (err) {
       console.error('Action failed:', err)
-      alert('Erro ao atualizar status: ' + err.message)
+      await showAlert('Erro ao atualizar status: ' + err.message, { title: 'Erro', icon: 'error' })
     }
   }
 

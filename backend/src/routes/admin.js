@@ -102,7 +102,7 @@ router.patch('/songs/:id', verifyAuth, adminOnly, async (req, res) => {
 router.patch('/songs/:id/edit', verifyAuth, adminOnly, async (req, res) => {
   try {
     const songId = req.params.id;
-    const { title, artist } = req.body;
+    const { title, artist, subtitle_mode, subtitle_data, subtitle_video_url } = req.body;
 
     if (!isValidUUID(songId)) {
       return res.status(400).json({ error: 'ID de música inválido.' });
@@ -111,6 +111,23 @@ router.patch('/songs/:id/edit', verifyAuth, adminOnly, async (req, res) => {
     const updates = {};
     if (title) updates.title = title;
     if (artist) updates.artist = artist;
+
+    if (subtitle_mode !== undefined) {
+      if (!['none', 'manual', 'video'].includes(subtitle_mode)) {
+        return res.status(400).json({ error: 'subtitle_mode inválido.' });
+      }
+      updates.subtitle_mode = subtitle_mode;
+      if (subtitle_mode === 'manual') {
+        updates.subtitle_data = subtitle_data || null;
+        updates.subtitle_video_url = null;
+      } else if (subtitle_mode === 'video') {
+        updates.subtitle_video_url = subtitle_video_url || null;
+        updates.subtitle_data = null;
+      } else {
+        updates.subtitle_data = null;
+        updates.subtitle_video_url = null;
+      }
+    }
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: 'Nenhum dado para atualizar.' });

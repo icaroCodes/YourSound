@@ -7,8 +7,8 @@
   --color-spotify-panel: #121212;
   --color-spotify-panel-hover: #1f1f1f;
   --color-spotify-highlight: #1a1a1a;
-  --color-spotify-green: #1ed760;
-  --color-spotify-green-hover: #1fdf64;
+  --color-spotify-green: #1ED45E;
+  --color-spotify-green-hover: #17c054;
 }
 
 /* Custom Scrollbar */
@@ -27,6 +27,15 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: #3f3f46;
+}
+
+/* Lyrics overlay: hide scrollbar for immersive view */
+.lyrics-overlay-scroll::-webkit-scrollbar {
+  display: none;
+}
+.lyrics-overlay-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Base resets & utilities */
@@ -69,7 +78,7 @@ body {
   display: inline-block;
   width: 3px;
   border-radius: 2px;
-  background: #1ed760;
+  background: #1ED45E;
   transform-origin: bottom;
   animation: music-bar 0.9s ease-in-out infinite;
 }
