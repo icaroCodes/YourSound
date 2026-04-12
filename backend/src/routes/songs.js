@@ -596,8 +596,25 @@ router.get('/proxy-stream', async (req, res) => {
         }
       });
 
+      // Prevent unhandled stream errors from crashing the Node.js process!
+      response.data.on('error', (e) => {
+        // Ignorar erros de fechamento prematuro (normal quando o vídeo avança/pausa)
+        if (e.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+          console.error('[PROXY-STREAM] Source stream error:', e.message);
+        }
+      });
+
+      res.on('error', (e) => {
+        if (e.code !== 'ERR_STREAM_PREMATURE_CLOSE' && e.code !== 'ECONNRESET') {
+          console.error('[PROXY-STREAM] Response stream error:', e.message);
+        }
+      });
+
       response.data.pipe(res);
-      req.on('close', () => { response.data.destroy(); });
+      
+      req.on('close', () => { 
+        response.data.destroy(); 
+      });
 
     } catch (err) {
       // If the CDN link expired or was forbidden, evict cache and retry once
