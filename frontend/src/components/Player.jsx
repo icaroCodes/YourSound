@@ -266,7 +266,10 @@ export default function Player({ isMobile = false }) {
   // --- MOBILE FULL SCREEN PLAYER ---
   if (isMobile && isMobileFullScreen) {
     return (
-      <div className="fixed inset-0 z-[100] bg-gradient-to-b from-[#531e1e] to-[#121212] flex flex-col px-8 pt-4 pb-10 text-white select-none animate-in slide-in-from-bottom duration-300">
+      <div 
+        className="fixed inset-0 z-[100] bg-gradient-to-b from-[#531e1e] to-[#121212] flex flex-col px-8 pt-4 text-white select-none animate-in slide-in-from-bottom duration-300"
+        style={{ paddingBottom: 'calc(2.5rem + env(safe-area-inset-bottom, 0px))' }}
+      >
         <audio
           ref={audioRef} src={currentSong.file_url}
           onLoadedData={handleLoadedData} onTimeUpdate={handleTimeUpdate}

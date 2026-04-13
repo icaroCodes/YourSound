@@ -83,7 +83,10 @@ export default function MainLayout() {
   }, [leftWidth, rightWidth, isSidebarCollapsed])
 
   return (
-    <div className="flex flex-col h-screen bg-spotify-base text-white overflow-hidden font-sans text-sm select-none">
+    <div 
+      className="flex flex-col h-screen bg-spotify-base text-white overflow-hidden font-sans text-sm select-none w-full border-0"
+      style={{ height: '100dvh', position: 'fixed', inset: 0 }}
+    >
       {/* Full-width Navbar - Hidden on Mobile */}
       <div className="hidden lg:block">
         <Navbar />
