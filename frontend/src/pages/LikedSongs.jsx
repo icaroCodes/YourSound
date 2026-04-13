@@ -12,7 +12,7 @@ export default function LikedSongs() {
   const [hoveredRow, setHoveredRow] = useState(null)
   const [playlistModalSong, setPlaylistModalSong] = useState(null)
 
-  const username = userProfile?.email?.split('@')[0] || 'Usuário'
+  const username = userProfile?.display_name || 'Usuário'
 
   const handlePlayAll = () => {
     if (likedSongs.length > 0) playSong(likedSongs[0], likedSongs)

@@ -53,10 +53,14 @@ export default function Home() {
 
   const getGreeting = () => {
     const hour = new Date().getHours()
-    if (hour >= 6 && hour < 12) return 'Bom dia'
-    if (hour >= 12 && hour < 18) return 'Boa tarde'
-    if (hour >= 18 && hour < 24) return 'Boa noite'
-    return 'Boa madrugada'
+    let text = ''
+    if (hour >= 6 && hour < 12) text = 'Bom dia'
+    else if (hour >= 12 && hour < 18) text = 'Boa tarde'
+    else if (hour >= 18 && hour < 24) text = 'Boa noite'
+    else text = 'Boa madrugada'
+
+    const name = userProfile?.display_name
+    return name ? `${text}, ${name}` : text
   }
 
   const greeting = getGreeting()
@@ -326,7 +330,7 @@ export default function Home() {
         <section>
           <div className="flex items-baseline justify-between mb-4">
             <h2 className="text-2xl font-bold tracking-tight hover:underline cursor-pointer">
-              Feito para {userProfile?.email?.split('@')[0] || 'você'}
+              Feito para {userProfile?.display_name || 'você'}
             </h2>
             <button className="text-sm font-bold text-zinc-400 hover:underline">Mostrar tudo</button>
           </div>

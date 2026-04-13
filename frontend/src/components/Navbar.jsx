@@ -128,7 +128,7 @@ export default function Navbar() {
 
   // Avatar: foto se existir, senão inicial do nome/email
   const avatarLetter = (userProfile?.display_name || userProfile?.email || 'Y')[0].toUpperCase()
-  const displayName = userProfile?.display_name || userProfile?.email?.split('@')[0] || 'Usuário'
+  const displayName = userProfile?.display_name || 'Usuário'
 
   return (
     <div className="h-16 flex items-center justify-between px-4 shrink-0 bg-spotify-base">
