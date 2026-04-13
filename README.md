@@ -11,7 +11,7 @@ YourSound é uma plataforma fullstack completa de streaming de música e vídeo,
 
 > [!WARNING]
 > **Sobre o Streaming de Vídeos (TikTok/YouTube)**: 
-> A reprodução de vídeos de fundo funciona de forma estável principalmente em **localhost**. Em ambientes de produção (como Vercel/Railway), o TikTok e o YouTube possuem restrições geográficas e de IP que podem bloquear o streaming, resultando em erros de carregamento no player.
+> A reprodução de vídeos de fundo e a criação de músicas usando link funciona de forma estável principalmente em **localhost**. Em ambientes de produção (como Vercel/Railway), o TikTok e o YouTube possuem restrições geográficas e de IP que podem bloquear o streaming, resultando em erros de carregamento no player.
 
 ---
 
