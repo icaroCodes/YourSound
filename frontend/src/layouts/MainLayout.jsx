@@ -113,7 +113,7 @@ export default function MainLayout() {
         {/* Center Content */}
         <main className="flex-1 lg:rounded-lg overflow-hidden min-w-0 relative">
           {/* Normal page content */}
-          <div className={`h-full overflow-y-auto custom-scrollbar bg-spotify-panel ${isLyricsOpen && currentSong ? 'lg:hidden' : ''}`}>
+          <div className={`h-full overflow-y-auto custom-scrollbar bg-spotify-panel ${isLyricsOpen && currentSong ? 'lg:hidden' : ''} ${currentSong && isMobile ? 'pb-[80px]' : ''}`}>
             <Outlet />
           </div>
           {/* Lyrics replaces center content (Desktop) or overlays (Mobile handled in CSS/Portal if needed, but here it's fine since it's absolute) */}
@@ -142,7 +142,10 @@ export default function MainLayout() {
       {/* Player Section - JS Conditional to prevent duplicate audio */}
       {isMobile ? (
         /* Mobile Player (Mini Player) */
-        <div className="absolute bottom-[64px] left-2 right-2 z-40">
+        <div 
+          className="absolute left-2 right-2 z-40"
+          style={{ bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))' }}
+        >
            <Player isMobile={true} />
         </div>
       ) : (
@@ -152,8 +155,11 @@ export default function MainLayout() {
         </div>
       )}
 
-      {/* Mobile Navigation Bar - Glassmorphism */}
-      <div className="block lg:hidden h-16 shrink-0 bg-[#121212]/70 backdrop-blur-xl border-t border-white/5 relative z-50">
+      {/* Mobile Navigation Bar - Glassmorphism + iOS Safe Area */}
+      <div 
+        className="block lg:hidden shrink-0 bg-[#121212]/90 backdrop-blur-xl border-t border-white/5 relative z-50"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', minHeight: '64px' }}
+      >
          <MobileNav onAddClick={() => setUploadPanelOpen(true)} />
       </div>
 
