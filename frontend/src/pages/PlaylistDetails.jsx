@@ -398,7 +398,7 @@ export default function PlaylistDetails() {
     try {
       setDeleting(true)
       await api.deletePlaylist(id)
-      navigate('/playlists', { replace: true })
+      navigate('/', { replace: true })
     } catch (err) {
       console.error('Erro ao excluir:', err.message)
       setDeleting(false)
@@ -610,6 +610,14 @@ export default function PlaylistDetails() {
   if (!isDesktop) {
     return (
       <div className="flex flex-col min-h-screen bg-black text-white pb-32">
+        {/* Hidden file input for cover */}
+        <input
+          ref={coverInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+          onChange={handleCoverChange}
+        />
         {/* Mobile Header with Gradient */}
         <div 
           className="relative px-6 pt-12 pb-8 flex flex-col items-center gap-8"
@@ -649,7 +657,7 @@ export default function PlaylistDetails() {
           <div className="w-full text-left space-y-2 mt-4">
             <h1 className="text-2xl font-black tracking-tight leading-tight">{playlist.name}</h1>
             <div className="flex items-center gap-2">
-               <div className="w-6 h-6 rounded-full bg-linear-to-br from-zinc-700 to-zinc-800 flex items-center justify-center overflow-hidden border border-white/5">
+               <div className="w-6 h-6 rounded-full bg-linear-to-br from-zinc-700 to-zinc-800 flex items-center justify-center overflow-hidden border border-transparent">
                   <span className="text-[10px] text-zinc-400 font-bold">{isOwner ? userProfile?.display_name?.[0]?.toUpperCase() : 'U'}</span>
                </div>
                <span className="text-sm font-bold text-white/90">{isOwner ? userProfile?.display_name : (playlist.user_name || 'Usuário')}</span>
@@ -661,22 +669,41 @@ export default function PlaylistDetails() {
         </div>
 
         {/* Action Bar Mobile */}
-        <div className="px-6 py-4 flex items-center justify-between sticky top-0 bg-black/95 backdrop-blur-md z-10 transition-colors border-b border-white/[0.02]">
+        <div className="px-6 py-4 flex items-center justify-between sticky top-0 bg-black/95 backdrop-blur-md z-10 transition-colors">
            <div className="flex items-center gap-7">
               <button 
                 className="text-spotify-green transition-transform active:scale-125"
               >
                 <Heart size={30} className="fill-spotify-green text-spotify-green" />
               </button>
-              <button className="text-zinc-400">
-                <Download size={24} strokeWidth={1.5} />
-              </button>
-              <button 
-                className="text-zinc-400" 
-                onClick={() => setMenuOpen(!menuOpen)}
-              >
-                <MoreHorizontal size={24} />
-              </button>
+              
+              <div className="relative" ref={menuRef}>
+                <button 
+                  className="text-zinc-400 active:scale-110 transition-transform" 
+                  onClick={() => setMenuOpen(!menuOpen)}
+                >
+                  <MoreHorizontal size={28} />
+                </button>
+
+                {menuOpen && isOwner && (
+                  <div className="absolute left-0 top-10 z-50 w-56 bg-[#282828] rounded-lg shadow-2xl py-1 text-sm overflow-hidden border border-white/5 animate-in fade-in zoom-in-95 duration-100">
+                    <button
+                      onClick={openEditModal}
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/10 active:bg-white/10 transition-colors text-left text-white"
+                    >
+                      <Pencil size={18} className="text-zinc-400" />
+                      <span className="font-semibold">Editar detalhes</span>
+                    </button>
+                    <button
+                      onClick={() => { setShowDeleteConfirm(true); setMenuOpen(false) }}
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/10 active:bg-white/10 transition-colors text-left text-red-400"
+                    >
+                      <Trash2 size={18} />
+                      <span className="font-semibold">Excluir playlist</span>
+                    </button>
+                  </div>
+                )}
+              </div>
            </div>
 
            <button 
@@ -807,6 +834,93 @@ export default function PlaylistDetails() {
               </div>
            )}
         </div>
+         
+         {/* ─── Shared Modals (Mobile) ─── */}
+         {editModalOpen && (
+           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={() => !savingEdit && setEditModalOpen(false)}>
+             <div className="bg-[#282828] rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+               <div className="flex items-center justify-between mb-5">
+                 <h3 className="text-lg font-bold text-white">Editar detalhes</h3>
+                 <button onClick={() => setEditModalOpen(false)} className="text-zinc-400 hover:text-white transition p-1"><X size={20} /></button>
+               </div>
+
+               <div className="space-y-4">
+                 <div>
+                   <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Nome</label>
+                   <input
+                     ref={editInputRef}
+                     type="text"
+                     value={editName}
+                     onChange={e => setEditName(e.target.value)}
+                     onKeyDown={handleEditKeyDown}
+                     maxLength={50}
+                     className="w-full px-3 py-2.5 bg-white/7 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-white/30 placeholder:text-zinc-500"
+                     placeholder="Nome da playlist"
+                   />
+                 </div>
+                 <div>
+                   <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Descrição <span className="text-zinc-600 font-normal">(opcional)</span></label>
+                   <textarea
+                     value={editDescription}
+                     onChange={e => setEditDescription(e.target.value)}
+                     maxLength={200}
+                     rows={3}
+                     className="w-full px-3 py-2.5 bg-white/7 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-white/30 placeholder:text-zinc-500 resize-none"
+                     placeholder="Adicione uma descrição opcional"
+                   />
+                 </div>
+                 <div>
+                   <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Visibilidade</label>
+                   <button
+                     type="button"
+                     onClick={() => setEditIsPublic(p => !p)}
+                     className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg border transition text-sm font-medium ${
+                       editIsPublic ? 'border-green-500/30 bg-green-500/10 text-green-400' : 'border-white/10 bg-white/5 text-zinc-400'
+                     }`}
+                   >
+                     {editIsPublic ? <Globe size={16} /> : <Lock size={16} />}
+                     <div className="text-left">
+                       <span className="block">{editIsPublic ? 'Pública' : 'Privada'}</span>
+                     </div>
+                   </button>
+                 </div>
+               </div>
+
+               <div className="flex justify-end gap-3 mt-6">
+                 <button onClick={() => setEditModalOpen(false)} className="px-5 py-2.5 rounded-full text-sm font-semibold text-white">Cancelar</button>
+                 <button
+                   onClick={savePlaylistDetails}
+                   disabled={savingEdit || !editName.trim()}
+                   className="px-5 py-2.5 bg-spotify-green rounded-full text-sm font-bold text-black disabled:opacity-50"
+                 >
+                   {savingEdit ? 'Salvando...' : 'Salvar'}
+                 </button>
+               </div>
+             </div>
+           </div>
+         )}
+
+         {showDeleteConfirm && (
+           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={() => !deleting && setShowDeleteConfirm(false)}>
+             <div className="bg-[#282828] rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+               <h3 className="text-lg font-bold text-white mb-2">Excluir playlist?</h3>
+               <p className="text-sm text-zinc-400 mb-6">Esta ação não pode ser desfeita.</p>
+               <div className="flex justify-end gap-3">
+                 <button onClick={() => setShowDeleteConfirm(false)} className="px-5 py-2.5 rounded-full text-sm font-semibold text-white">Cancelar</button>
+                 <button onClick={handleDeletePlaylist} className="px-5 py-2.5 bg-red-500 rounded-full text-sm font-bold text-white">
+                   {deleting ? 'Excluindo...' : 'Excluir'}
+                 </button>
+               </div>
+             </div>
+           </div>
+         )}
+
+         {playlistModalSong && (
+           <AddToPlaylistModal 
+             song={playlistModalSong} 
+             onClose={() => setPlaylistModalSong(null)} 
+           />
+         )}
       </div>
     );
   }
@@ -894,12 +1008,6 @@ export default function PlaylistDetails() {
             {isPlaylistPlaying
               ? <Pause fill="black" stroke="none" size={24} />
               : <Play fill="black" stroke="none" size={24} className="ml-0.5" />}
-          </button>
-          <button className="text-zinc-400 hover:text-white transition p-2">
-            <Shuffle size={22} />
-          </button>
-          <button className="text-zinc-400 hover:text-white transition p-2">
-            <UserPlus size={22} />
           </button>
 
           {/* ─── More Menu (Edit / Delete) ─── */}

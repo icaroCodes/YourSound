@@ -8,7 +8,6 @@ import MainLayout from './layouts/MainLayout'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Upload from './pages/Upload'
-import Playlists from './pages/Playlists'
 import PlaylistDetails from './pages/PlaylistDetails'
 import LikedSongs from './pages/LikedSongs'
 import Admin from './pages/Admin'
@@ -201,7 +200,6 @@ export default function App() {
             <Route path="upload" element={<Upload />} />
             <Route path="search" element={<Search />} />
             <Route path="liked" element={<LikedSongs />} />
-            <Route path="playlists" element={<Playlists />} />
             <Route path="playlists/:id" element={<PlaylistDetails />} />
             <Route path="profile" element={<Profile />} />
             <Route path="admin" element={
