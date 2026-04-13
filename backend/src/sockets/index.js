@@ -2,14 +2,17 @@ const { Server } = require('socket.io');
 const { supabase } = require('../config/supabase');
 
 const ALLOWED_ORIGINS = [
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
+  'https://your-sound.vercel.app',
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
+// Allow localhost only in development
+if (process.env.NODE_ENV !== 'production') {
+  ALLOWED_ORIGINS.push('http://localhost:5173', 'http://127.0.0.1:5173');
+}
+
 function isAllowedOrigin(origin) {
   if (!origin) return true;
-  if (origin.endsWith('.vercel.app')) return true;
   return ALLOWED_ORIGINS.includes(origin);
 }
 

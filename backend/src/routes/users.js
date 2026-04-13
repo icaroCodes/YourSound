@@ -2,19 +2,33 @@ const express = require('express');
 const router = express.Router();
 const { supabase } = require('../config/supabase');
 const { verifyAuth } = require('../middleware/auth');
+const { sanitizeString } = require('../middleware/validate');
 
 /**
  * PATCH /me/profile
  * Atualiza display_name e avatar_url do usuário autenticado.
+ * SECURITY: display_name is sanitized, avatar_url is validated against Supabase domain.
  */
 router.patch('/me/profile', verifyAuth, async (req, res) => {
   try {
     const userId = req.userId;
-    const { display_name, avatar_url } = req.body;
-
     const updates = {};
-    if (display_name !== undefined) updates.display_name = display_name || null;
-    if (avatar_url !== undefined) updates.avatar_url = avatar_url || null;
+
+    if (req.body.display_name !== undefined) {
+      updates.display_name = sanitizeString(req.body.display_name, 50) || null;
+    }
+
+    if (req.body.avatar_url !== undefined) {
+      const avatarUrl = req.body.avatar_url;
+      if (avatarUrl) {
+        // Only accept URLs from our own Supabase Storage to prevent tracking/malicious URLs
+        const supabaseUrl = process.env.SUPABASE_URL;
+        if (!supabaseUrl || !avatarUrl.startsWith(supabaseUrl + '/storage/')) {
+          return res.status(400).json({ error: 'URL de avatar inválida. Use o upload da plataforma.' });
+        }
+      }
+      updates.avatar_url = avatarUrl || null;
+    }
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: 'Nenhum campo para atualizar.' });

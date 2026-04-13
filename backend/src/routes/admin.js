@@ -3,7 +3,7 @@ const router = express.Router();
 const { supabase } = require('../config/supabase');
 const { verifyAuth } = require('../middleware/auth');
 const { adminOnly } = require('../middleware/adminOnly');
-const { isValidUUID } = require('../middleware/validate');
+const { isValidUUID, sanitizeString } = require('../middleware/validate');
 
 /**
  * ALL routes in this file are protected by verifyAuth + adminOnly.
@@ -109,8 +109,8 @@ router.patch('/songs/:id/edit', verifyAuth, adminOnly, async (req, res) => {
     }
 
     const updates = {};
-    if (title) updates.title = title;
-    if (artist) updates.artist = artist;
+    if (title) updates.title = sanitizeString(title, 100);
+    if (artist) updates.artist = sanitizeString(artist, 100);
 
     if (subtitle_mode !== undefined) {
       if (!['none', 'manual', 'video'].includes(subtitle_mode)) {

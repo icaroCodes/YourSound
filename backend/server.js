@@ -58,12 +58,17 @@ app.use(helmet({
 }));
 
 // ── SECURITY: CORS ───────────────────────────────────────────────────
+// STRICT whitelist — only explicitly trusted origins are allowed.
+// No wildcard *.vercel.app — that would let any Vercel project access the API.
 const ALLOWED_ORIGINS = [
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
   'https://your-sound.vercel.app',
   process.env.FRONTEND_URL,
 ].filter(Boolean);
+
+// Allow localhost only in development
+if (process.env.NODE_ENV !== 'production') {
+  ALLOWED_ORIGINS.push('http://localhost:5173', 'http://127.0.0.1:5173');
+}
 
 // Remove duplicates
 const uniqueOrigins = [...new Set(ALLOWED_ORIGINS)];
@@ -73,18 +78,8 @@ app.use(cors({
     // Allow server-to-server requests (no origin) — curl, Postman, healthchecks
     if (!origin) return callback(null, true);
 
-    // Allow all Vercel preview deployments
-    if (origin.endsWith('.vercel.app')) {
-      return callback(null, true);
-    }
-
-    // Allow explicitly listed origins
+    // Allow explicitly listed origins only
     if (uniqueOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-
-    // In production, allow localhost for debugging if needed
-    if (origin.startsWith('http://localhost:')) {
       return callback(null, true);
     }
 
@@ -111,13 +106,24 @@ const uploadLimiter = rateLimit({
   message: { error: 'Limite de uploads atingido. Aguarde 15 minutos.' },
 });
 
+// Heavy proxy/streaming requests — strict per-IP limit
+const proxyLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Muitas requisições de streaming. Aguarde 1 minuto.' },
+});
+
 app.use(globalLimiter);
 
-// ── REQUEST LOGGER — see every request that reaches Express ──────────
-app.use((req, res, next) => {
-  console.log(`[REQ] ${req.method} ${req.url} (type: ${req.headers['content-type'] || 'none'})`);
-  next();
-});
+// ── REQUEST LOGGER — only in development to avoid log flooding ───────
+if (process.env.NODE_ENV !== 'production') {
+  app.use((req, res, next) => {
+    console.log(`[REQ] ${req.method} ${req.path}`);
+    next();
+  });
+}
 
 // ── Body parsing ─────────────────────────────────────────────────────
 const skipUploadPaths = (middleware) => (req, res, next) => {
@@ -165,6 +171,7 @@ try {
   const usersRoutes = require('./src/routes/users');
 
   app.use('/api/songs/upload', uploadLimiter);
+  app.use('/api/songs/proxy-stream', proxyLimiter);
   app.use('/api/songs', songsRoutes);
   app.use('/api/playlists', playlistsRoutes);
   app.use('/api/likes', likesRoutes);

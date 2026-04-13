@@ -94,7 +94,7 @@ router.get('/:id', verifyAuth, async (req, res) => {
     res.json({ playlist, songs });
   } catch (err) {
     console.error('[GET /playlists/:id]', err.message);
-    res.status(500).json({ error: `Erro ao carregar playlist: ${err.message}` });
+    res.status(500).json({ error: 'Erro ao carregar playlist.' });
   }
 });
 

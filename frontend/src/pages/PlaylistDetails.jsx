@@ -1120,6 +1120,8 @@ export default function PlaylistDetails() {
                 </div>
             </div>
           )}
+        </div>
+      )}
       {playlistModalSong && (
         <AddToPlaylistModal 
           song={playlistModalSong} 

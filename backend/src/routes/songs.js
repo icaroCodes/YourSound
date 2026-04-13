@@ -31,6 +31,8 @@ const { supabase } = require('../config/supabase');
 const { verifyAuth } = require('../middleware/auth');
 const {
   sanitizeString,
+  escapeLike,
+  validateMediaUrl,
   ALLOWED_AUDIO_MIMES,
   ALLOWED_IMAGE_MIMES,
   MAX_AUDIO_SIZE,
@@ -86,7 +88,8 @@ router.patch('/:id/duration', verifyAuth, async (req, res) => {
     if (error) throw error;
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[PATCH /songs/:id/duration]', err.message);
+    res.status(500).json({ error: 'Erro ao atualizar duração.' });
   }
 });
 
@@ -103,7 +106,7 @@ router.get('/', verifyAuth, async (req, res) => {
     const { data, error } = await supabase
       .from('songs')
       .select('*')
-      .or(`and(is_public.eq.true,status.eq.approved),user_id.eq.${req.userId}`)
+      .or(`and(is_public.eq.true,status.eq.approved),user_id.eq.${req.userId}`)  // userId from verified JWT — safe
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -130,7 +133,7 @@ router.get('/search', verifyAuth, async (req, res) => {
       .limit(50);
 
     if (q.length >= 2) {
-      query = query.ilike('title', `%${q}%`);
+      query = query.ilike('title', `%${escapeLike(q)}%`);
     }
 
     const { data, error } = await query;
@@ -331,7 +334,7 @@ router.post(
 
     } catch (err) {
       console.error('[POST /songs/upload]', err.message);
-      res.status(500).json({ error: err.message || 'Erro ao fazer upload.' });
+      res.status(500).json({ error: 'Erro ao fazer upload. Tente novamente.' });
     }
   }
 );
@@ -394,8 +397,9 @@ router.post(
         return safeJson(400, { error: 'Título, artista e URL são obrigatórios.' });
       }
 
-      const isSupported = /(?:youtube\.com|youtu\.be|tiktok\.com)/.test(url);
-      if (!isSupported) {
+      // SECURITY: Strict URL validation against hostname whitelist
+      const urlCheck = validateMediaUrl(url);
+      if (!urlCheck.valid) {
         cleanup();
         return safeJson(400, { error: 'Link não suportado. Use YouTube ou TikTok.' });
       }
@@ -410,12 +414,12 @@ router.post(
 
       console.log('[FROM-LINK] Step 1: yt-dlp extract...');
       await runYtdlp([
-        url,
         '-f', 'bestaudio/best',
         '-o', rawPath,
         '--no-playlist',
         '--no-warnings',
         '--max-filesize', '15M',
+        '--', url,  // '--' prevents url from being interpreted as a flag
       ], 45000);
       console.log('[FROM-LINK] Step 1 done.');
 
@@ -528,7 +532,7 @@ router.post(
     } catch (err) {
       cleanup();
       console.error('[FROM-LINK] === ERROR ===', err.message);
-      safeJson(500, { error: err.message || 'Erro ao importar do link.' });
+      safeJson(500, { error: 'Erro ao importar do link. Tente novamente.' });
     }
   }
 );
@@ -580,19 +584,39 @@ router.patch('/:id/subtitle', verifyAuth, async (req, res) => {
     res.json({ success: true, song: data });
   } catch (err) {
     console.error('[PATCH /songs/:id/subtitle]', err.message);
-    res.status(500).json({ error: err.message || 'Erro ao atualizar legenda.' });
+    res.status(500).json({ error: 'Erro ao atualizar legenda.' });
   }
 });
 
+// Bounded cache — prevents memory exhaustion from unbounded Map growth.
+// Max 50 entries, auto-evicts oldest when full.
+const PROXY_CACHE_MAX = 50;
 const proxyUrlCache = new Map();
+function cacheSet(key, value, ttlMs) {
+  // Evict oldest if at capacity
+  if (proxyUrlCache.size >= PROXY_CACHE_MAX) {
+    const oldestKey = proxyUrlCache.keys().next().value;
+    proxyUrlCache.delete(oldestKey);
+  }
+  proxyUrlCache.set(key, value);
+  setTimeout(() => proxyUrlCache.delete(key), ttlMs);
+}
 
-router.get('/proxy-stream', async (req, res) => {
+// SECURITY: verifyAuth prevents unauthenticated SSRF.
+// proxyLimiter is applied at the server.js level.
+router.get('/proxy-stream', verifyAuth, async (req, res) => {
   let { url, type = 'video' } = req.query;
 
   if (!url) return res.status(400).send('URL is required');
   
   // Handle case where url might be an array
   if (Array.isArray(url)) url = url[0];
+
+  // SECURITY: Strict URL validation — prevents SSRF.
+  const urlCheck = validateMediaUrl(url);
+  if (!urlCheck.valid) {
+    return res.status(400).send('URL não permitida. Use YouTube ou TikTok.');
+  }
 
   const cacheKey = `${url}_${type}`;
   
@@ -617,7 +641,7 @@ router.get('/proxy-stream', async (req, res) => {
         '--no-playlist',
         '--no-check-certificates',
         '--no-warnings',
-        url
+        '--', url  // '--' prevents url from being interpreted as a flag
       ], { maxBuffer: 50 * 1024 * 1024 }, (err, stdout) => {
         if (err) {
           const errMsg = err.message || '';
@@ -743,14 +767,14 @@ router.get('/proxy-stream', async (req, res) => {
       const buffer = await new Promise((resolve, reject) => {
         const chunks = [];
         const ytProc = spawn(ytdlpBin, [
-          url,
           '-f', format,
           '-o', '-',
           '--no-playlist',
           '--no-check-certificates',
           '--no-warnings',
           '--max-filesize', '20M', // Security limit
-          '--quiet'
+          '--quiet',
+          '--', url  // '--' prevents url from being interpreted as a flag
         ]);
 
         ytProc.stdout.on('data', (c) => chunks.push(c));
@@ -771,8 +795,7 @@ router.get('/proxy-stream', async (req, res) => {
 
       if (buffer.length === 0) throw new Error('Empty stream received');
 
-      proxyUrlCache.set(cacheKey, buffer);
-      setTimeout(() => proxyUrlCache.delete(cacheKey), 60 * 60 * 1000); // 1h cache
+      cacheSet(cacheKey, buffer, 60 * 60 * 1000); // 1h cache, bounded
 
       res.setHeader('Content-Type', type === 'video' ? 'video/mp4' : 'audio/mpeg');
       res.setHeader('Content-Length', buffer.length);
@@ -791,8 +814,8 @@ router.get('/proxy-stream', async (req, res) => {
   if (!directData) {
     try {
       directData = await fetchDirectData();
-      proxyUrlCache.set(cacheKey, directData);
-      setTimeout(() => proxyUrlCache.delete(cacheKey), 2 * 60 * 60 * 1000);
+      cacheSet(cacheKey, directData, 2 * 60 * 60 * 1000);
+      // TTL handled by cacheSet
     } catch (err) {
       console.error('[PROXY-STREAM] Initial extraction failed:', err.message);
       return res.status(500).send('Failed to extract streamable URL');
