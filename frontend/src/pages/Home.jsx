@@ -16,8 +16,9 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const { playSong, currentSong, isPlaying, togglePlay } = usePlayerStore()
-  const { user, userProfile } = useAuthStore()
+  const { user, userProfile, signOut } = useAuthStore()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -133,9 +134,41 @@ export default function Home() {
                 <Plus size={20} strokeWidth={3} />
               </button>
            </div>
-           <button className="text-white">
-              <Settings size={28} strokeWidth={1.5} />
-           </button>
+           <div className="relative">
+             <button 
+               className="text-white active:scale-95 transition-transform"
+               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+             >
+                <Settings size={28} strokeWidth={1.5} />
+             </button>
+             {isMobileMenuOpen && (
+               <>
+                 <div className="fixed inset-0 z-40" onClick={() => setIsMobileMenuOpen(false)} />
+                 <div className="absolute top-10 right-0 mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col">
+                   {userProfile?.role === 'admin' && (
+                     <button 
+                       onClick={() => navigate('/admin')} 
+                       className="w-full text-left px-4 py-3 text-white hover:bg-zinc-800 transition text-sm font-medium border-b border-white/5 flex items-center justify-between"
+                     >
+                       Notificações
+                     </button>
+                   )}
+                   <button 
+                     onClick={() => navigate('/profile')} 
+                     className="w-full text-left px-4 py-3 text-white hover:bg-zinc-800 transition text-sm font-medium"
+                   >
+                     Perfil
+                   </button>
+                   <button 
+                     onClick={() => { signOut(); setIsMobileMenuOpen(false); }} 
+                     className="w-full text-left px-4 py-3 text-red-500 hover:bg-zinc-800 transition text-sm font-medium"
+                   >
+                     Sair
+                   </button>
+                 </div>
+               </>
+             )}
+           </div>
         </div>
 
         {/* Playlists Section (Normal card size) */}

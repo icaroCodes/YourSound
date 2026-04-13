@@ -153,6 +153,73 @@ function SortableSongRow({ song, idx, isActive, playing, isOwner, onRowClick, on
   )
 }
 
+function SortableMobileSongRow({ song, isActive, playing, isOwner, onRowClick, onLike, onAddToPlaylist, isLiked }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging: selfDragging } = useSortable({ id: song.playlist_song_id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: selfDragging ? 0.3 : 1,
+  }
+
+  return (
+    <div 
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-2 group py-1.5 px-1 rounded-md transition-colors ${isActive ? 'bg-white/10' : 'active:bg-white/5'}`}
+      onClick={() => onRowClick(song)}
+    >
+      {/* Drag handle */}
+      {isOwner && (
+         <div 
+           className="touch-none cursor-grab active:cursor-grabbing p-2 shrink-0 opacity-80"
+           onClick={e => e.stopPropagation()}
+           {...attributes}
+           {...listeners}
+         >
+            <GripVertical size={18} className="text-zinc-500" />
+         </div>
+      )}
+      
+      <div className="relative w-12 h-12 rounded-[4px] overflow-hidden bg-zinc-800 shrink-0 shadow-md">
+         {song.cover_url ? (
+           <img src={song.cover_url} className="w-full h-full object-cover" alt="" />
+         ) : (
+            <div className="w-full h-full flex items-center justify-center text-zinc-600 text-sm">&#9835;</div>
+         )}
+         {isActive && playing && (
+           <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+              <PlayingBars isPlaying={true} height={14} />
+           </div>
+         )}
+      </div>
+      <div className="flex-1 min-w-0 px-1">
+         <h4 className={`text-base font-bold truncate tracking-tight ${isActive ? 'text-spotify-green' : 'text-white'}`}>
+            {song.title}
+         </h4>
+         <div className="flex items-center gap-1.5">
+            {song.explicit && <span className="bg-zinc-500 text-black text-[9px] px-1 rounded-sm font-black h-3.5 flex items-center">E</span>}
+            <p className="text-[13px] text-zinc-400 truncate leading-tight">{song.artist}</p>
+         </div>
+      </div>
+      <div className="flex items-center gap-4 shrink-0 pr-2">
+         <button 
+           onClick={(e) => { e.stopPropagation(); onLike(song) }}
+           className={`transition-all active:scale-125 ${isLiked(song.id) ? 'text-spotify-green' : 'text-zinc-500'}`}
+         >
+            <Heart size={22} fill={isLiked(song.id) ? "currentColor" : "none"} />
+         </button>
+         <button 
+            onClick={(e) => { e.stopPropagation(); onAddToPlaylist(song) }}
+            className="text-zinc-500 hover:text-white transition-all active:scale-125"
+         >
+            <Plus size={22} />
+         </button>
+      </div>
+    </div>
+  )
+}
+
 export default function PlaylistDetails() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -619,53 +686,61 @@ export default function PlaylistDetails() {
         </div>
 
         {/* Mobile Tracks List */}
-        <div className="px-4 space-y-2 mt-4">
-           {songs.map((song) => {
-             const isActive = currentSong?.id === song.id;
-             return (
-               <div 
-                 key={song.playlist_song_id}
-                 className="flex items-center gap-4 group active:bg-white/5 p-2 rounded-md transition-colors"
-                 onClick={() => handleRowClick(song)}
+        <div className="px-4 space-y-1 mt-4">
+           {songs.length === 0 ? (
+             <div className="text-zinc-500 py-16 text-center border border-dashed border-white/5 rounded-lg">
+               <p className="text-base mb-2">Esta playlist está vazia.</p>
+               {isOwner && (
+                 <button onClick={() => openSearch()} className="text-white font-semibold hover:underline">
+                   Pesquise e adicione músicas
+                 </button>
+               )}
+             </div>
+           ) : (
+             <DndContext
+               sensors={sensors}
+               collisionDetection={closestCenter}
+               onDragStart={handleDragStart}
+               onDragEnd={handleDragEnd}
+             >
+               <SortableContext
+                 items={songs.map(s => s.playlist_song_id)}
+                 strategy={verticalListSortingStrategy}
                >
-                  <div className="relative w-12 h-12 rounded-[4px] overflow-hidden bg-zinc-800 shrink-0 shadow-md">
-                     {song.cover_url ? (
-                       <img src={song.cover_url} className="w-full h-full object-cover" alt="" />
-                     ) : (
-                        <div className="w-full h-full flex items-center justify-center text-zinc-600 text-sm">&#9835;</div>
-                     )}
-                     {isActive && isPlaying && (
-                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                          <PlayingBars isPlaying={true} height={14} />
-                       </div>
-                     )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                     <h4 className={`text-base font-bold truncate tracking-tight ${isActive ? 'text-spotify-green' : 'text-white'}`}>
-                        {song.title}
-                     </h4>
-                     <div className="flex items-center gap-1.5">
-                        {song.explicit && <span className="bg-zinc-500 text-black text-[9px] px-1 rounded-xs font-black h-3.5 flex items-center">E</span>}
-                        <p className="text-[13px] text-zinc-400 truncate leading-tight">{song.artist}</p>
+                 {songs.map((song) => (
+                   <SortableMobileSongRow
+                     key={song.playlist_song_id}
+                     song={song}
+                     isActive={currentSong?.id === song.id}
+                     playing={currentSong?.id === song.id && isPlaying}
+                     isOwner={isOwner}
+                     onRowClick={handleRowClick}
+                     onLike={toggleLike}
+                     onAddToPlaylist={setPlaylistModalSong}
+                     isLiked={isLiked}
+                   />
+                 ))}
+               </SortableContext>
+               <DragOverlay>
+                 {activeId ? (() => {
+                   const song = songs.find(s => s.playlist_song_id === activeId)
+                   if (!song) return null
+                   return (
+                     <div className="flex items-center gap-3 p-2 bg-[#282828] rounded-md shadow-2xl opacity-95 border border-white/10">
+                        <GripVertical size={18} className="text-zinc-400 shrink-0" />
+                        <div className="w-12 h-12 rounded-[4px] overflow-hidden shadow-md shrink-0">
+                          {song.cover_url ? <img src={song.cover_url} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-zinc-800 flex items-center justify-center text-zinc-600 text-sm">&#9835;</div>}
+                        </div>
+                        <div className="flex flex-col flex-1 min-w-0 pr-8">
+                           <span className="text-base font-bold text-white truncate">{song.title}</span>
+                           <span className="text-[13px] text-zinc-400 truncate">{song.artist}</span>
+                        </div>
                      </div>
-                  </div>
-                  <div className="flex items-center gap-6">
-                     <button 
-                       onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
-                       className={`transition-all active:scale-125 ${isLiked(song.id) ? 'text-spotify-green' : 'text-zinc-500'}`}
-                     >
-                        <Heart size={22} fill={isLiked(song.id) ? "currentColor" : "none"} />
-                     </button>
-                     <button 
-                        onClick={(e) => { e.stopPropagation(); setPlaylistModalSong(song) }}
-                        className="text-zinc-500 hover:text-white transition-all active:scale-125"
-                     >
-                        <Plus size={22} />
-                     </button>
-                  </div>
-               </div>
-             );
-           })}
+                   )
+                 })() : null}
+               </DragOverlay>
+             </DndContext>
+           )}
 
            {/* ─── Add Songs Section (Mobile) ─── */}
            {isOwner && (

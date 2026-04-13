@@ -77,7 +77,7 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-full pb-16 px-6 pt-8 max-w-lg mx-auto">
+    <div className="min-h-full pb-32 lg:pb-16 px-4 sm:px-6 pt-6 sm:pt-8 max-w-lg mx-auto">
       {/* Back */}
       <button
         onClick={() => navigate(-1)}

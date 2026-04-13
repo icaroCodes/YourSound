@@ -140,10 +140,10 @@ export default function Admin() {
   if (loading) return <div className="text-zinc-400">Carregando painel admin...</div>
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto relative">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight mb-2 text-indigo-400">Painel do Administrador</h1>
-        <p className="text-zinc-400">Gerenciamento e aprovação de músicas públicas.</p>
+    <div className="space-y-6 lg:space-y-8 max-w-5xl mx-auto relative px-4 sm:px-6 pt-6 sm:pt-8 pb-32 lg:pb-16">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">Painel do Administrador</h1>
+        <p className="text-sm text-zinc-400">Gerenciamento e aprovação de músicas públicas.</p>
       </div>
 
       {feedback && (
@@ -154,25 +154,25 @@ export default function Admin() {
 
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard icon={<Music2 size={20} />} label="Músicas" value={stats.totalSongs} />
-          <StatCard icon={<BarChart3 size={20} />} label="Pendentes" value={stats.pendingSongs} color="text-yellow-400" />
-          <StatCard icon={<Users size={20} />} label="Usuários" value={stats.totalUsers} />
-          <StatCard icon={<ListMusic size={20} />} label="Playlists" value={stats.totalPlaylists} />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <StatCard icon={<Music2 size={18} />} label="Músicas" value={stats.totalSongs} />
+          <StatCard icon={<BarChart3 size={18} />} label="Pendentes" value={stats.pendingSongs} color="text-yellow-400" />
+          <StatCard icon={<Users size={18} />} label="Usuários" value={stats.totalUsers} />
+          <StatCard icon={<ListMusic size={18} />} label="Playlists" value={stats.totalPlaylists} />
         </div>
       )}
 
       {/* Tabs */}
-      <div className="flex items-center gap-4 border-b border-white/10 pb-px">
+      <div className="flex items-center gap-6 border-b border-white/10 pb-px overflow-x-auto no-scrollbar whitespace-nowrap">
         <button 
           onClick={() => setActiveTab('pending')}
-          className={`pb-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'pending' ? 'border-spotify-green text-white' : 'border-transparent text-zinc-400 hover:text-white'}`}
+          className={`pb-3 text-sm font-semibold border-b-2 transition-colors shrink-0 ${activeTab === 'pending' ? 'border-spotify-green text-white' : 'border-transparent text-zinc-400 hover:text-white'}`}
         >
           Pendentes ({pendingSongs.length})
         </button>
         <button 
           onClick={() => setActiveTab('all')}
-          className={`pb-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'all' ? 'border-spotify-green text-white' : 'border-transparent text-zinc-400 hover:text-white'}`}
+          className={`pb-3 text-sm font-semibold border-b-2 transition-colors shrink-0 ${activeTab === 'all' ? 'border-spotify-green text-white' : 'border-transparent text-zinc-400 hover:text-white'}`}
         >
           Todas Músicas Públicas ({allSongs.length})
         </button>
@@ -335,9 +335,9 @@ export default function Admin() {
 
 function StatCard({ icon, label, value, color = 'text-white' }) {
   return (
-    <div className="p-4 bg-zinc-900/40 rounded-xl border border-white/5">
-      <div className="flex items-center gap-2 text-zinc-400 mb-2">{icon} <span className="text-xs font-medium uppercase tracking-wider">{label}</span></div>
-      <span className={`text-2xl font-bold ${color}`}>{value}</span>
+    <div className="p-4 sm:p-5 bg-[#181818] rounded-xl border border-white/5 shadow-md hover:bg-[#202020] transition-colors">
+      <div className="flex items-center gap-1.5 text-zinc-400 mb-2 sm:mb-3">{icon} <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest">{label}</span></div>
+      <span className={`text-2xl sm:text-3xl font-black ${color}`}>{value}</span>
     </div>
   )
 }

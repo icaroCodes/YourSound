@@ -37,108 +37,101 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-4">
-      <div className="w-full max-w-sm relative z-10">
-
-        {/* Logo */}
-        <div className="flex flex-col items-center mb-10">
-          <div className="mb-5">
-            <img src="/yoursound.svg" alt="YourSound" className="w-16 h-16" />
-          </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">
+    <div className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Subtle Background Glow */}
+      <div className="absolute top-[-20%] inset-x-0 h-[60vh] bg-gradient-to-b from-[#1ED45E]/20 to-transparent pointer-events-none blur-3xl opacity-50" />
+      
+      <div className="w-full max-w-[420px] relative z-10">
+        
+        {/* Header / Logo */}
+        <div className="flex flex-col items-center mb-8">
+          <img src="/yoursound.svg" alt="YourSound" className="w-16 h-16 mb-6 drop-shadow-lg" />
+          <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight text-center">
             {isLogin ? 'Entrar no YourSound' : 'Criar sua conta'}
           </h1>
-          <p className="text-sm text-zinc-500 mt-1.5">
-            {isLogin ? 'Bem-vindo de volta.' : 'Comece a ouvir agora.'}
-          </p>
         </div>
 
         {/* Error */}
         {error && (
-          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm mb-5 text-center">
+          <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm font-medium mb-6 text-center animate-in fade-in zoom-in duration-300">
             {error}
           </div>
         )}
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-3">
-          {!isLogin && (
+        {/* Form Container */}
+        <div className="bg-[#121212]/80 backdrop-blur-xl p-6 sm:p-10 rounded-2xl shadow-2xl border border-white/5">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {!isLogin && (
+              <div>
+                <label className="block text-sm font-bold text-white mb-2">Como devemos chamar você?</label>
+                <input
+                  type="text"
+                  required
+                  maxLength={50}
+                  className="w-full px-4 py-3.5 bg-black border border-zinc-700 hover:border-zinc-500 focus:border-white rounded-lg text-white text-base focus:outline-none transition-colors placeholder:text-zinc-600 shadow-inner"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="Seu nome ou apelido"
+                />
+              </div>
+            )}
+            
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">Nome</label>
+              <label className="block text-sm font-bold text-white mb-2">E-mail</label>
               <input
-                type="text"
+                type="email"
                 required
-                maxLength={50}
-                className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#1ED45E] focus:border-[#1ED45E] transition placeholder:text-zinc-600"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Como você quer ser chamado?"
+                className="w-full px-4 py-3.5 bg-black border border-zinc-700 hover:border-zinc-500 focus:border-white rounded-lg text-white text-base focus:outline-none transition-colors placeholder:text-zinc-600 shadow-inner"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="nome@exemplo.com"
               />
             </div>
-          )}
-          <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">Email</label>
-            <input
-              type="email"
-              required
-              className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#1ED45E] focus:border-[#1ED45E] transition placeholder:text-zinc-600"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="seu@email.com"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">Senha</label>
-            <input
-              type="password"
-              required
-              minLength={6}
-              className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#1ED45E] focus:border-[#1ED45E] transition placeholder:text-zinc-600"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 mt-1 bg-[#1ED45E] hover:bg-[#17c054] text-black font-bold rounded-full text-sm transition-all shadow-lg shadow-[#1ED45E]/10 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? 'Aguarde...' : (isLogin ? 'Entrar' : 'Criar Conta')}
-          </button>
-        </form>
 
-        {/* Divider */}
-        <div className="flex items-center gap-3 my-6">
-          <div className="flex-1 h-px bg-zinc-800" />
-          <span className="text-xs text-zinc-600">ou</span>
-          <div className="flex-1 h-px bg-zinc-800" />
+            <div>
+              <label className="block text-sm font-bold text-white mb-2">Senha</label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                className="w-full px-4 py-3.5 bg-black border border-zinc-700 hover:border-zinc-500 focus:border-white rounded-lg text-white text-base focus:outline-none transition-colors placeholder:text-zinc-600 shadow-inner"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="No mínimo 6 caracteres"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-4 mt-2 bg-spotify-green hover:brightness-110 active:scale-95 text-black font-black rounded-full text-base transition-all shadow-xl shadow-spotify-green/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Aguarde...' : (isLogin ? 'Entrar agora' : 'Criar conta grátis')}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 my-8">
+            <div className="flex-1 h-px bg-white/10" />
+            <span className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">ou</span>
+            <div className="flex-1 h-px bg-white/10" />
+          </div>
+
+          {/* Switch mode */}
+          <div className="text-center">
+            <p className="text-zinc-400 font-medium mb-3">
+              {isLogin ? 'Ainda não tem uma conta?' : 'Já tem uma conta?'}
+            </p>
+            <button
+              type="button"
+              onClick={switchMode}
+              className="w-full py-3.5 border-2 border-zinc-600 hover:border-white text-white font-bold rounded-full transition-colors"
+            >
+              {isLogin ? 'Inscrever-se no YourSound' : 'Fazer login no YourSound'}
+            </button>
+          </div>
         </div>
 
-        {/* Switch mode */}
-        <div className="text-center text-sm">
-          <span className="text-zinc-500">
-            {isLogin ? 'Não tem uma conta? ' : 'Já tem uma conta? '}
-          </span>
-          <button
-            type="button"
-            onClick={switchMode}
-            className="text-white font-semibold hover:text-[#1ED45E] transition"
-          >
-            {isLogin ? 'Cadastre-se' : 'Faça login'}
-          </button>
-        </div>
-
-        {/* Educational Project Disclaimer */}
-        <div className="mt-10 pt-8 border-t border-zinc-900/50 text-center flex flex-col items-center">
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400 font-medium uppercase tracking-[0.15em] mb-4">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#1ED45E] animate-pulse" />
-            Projeto Educacional
-          </div>
-          <p className="text-[11px] text-zinc-500 leading-relaxed max-w-[300px]">
-            Este software é um projeto estritamente educacional. Toda responsabilidade pelo conteúdo publicado e reproduzido é do usuário. <span className="text-zinc-300 font-medium">Não incentivamos nem apoiamos a pirataria de qualquer forma.</span>
-          </p>
-        </div>
       </div>
     </div>
   )
