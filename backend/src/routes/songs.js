@@ -55,6 +55,8 @@ function runYtdlp(args, timeoutMs = 60000) {
   return new Promise((resolve, reject) => {
     const proc = execFile(ytdlpBin, args, { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) {
+        console.error('[YTDLP ERROR] stderr:', stderr);
+        console.error('[YTDLP ERROR] err.message:', err.message);
         const msg = (stderr || err.message || '').split('\n').find(l => l.startsWith('ERROR:')) || 'Falha ao extrair áudio.';
         reject(new Error(msg));
       } else {
@@ -417,6 +419,7 @@ router.post(
         '-f', 'bestaudio/best',
         '-o', rawPath,
         '--no-playlist',
+        '--force-ipv4',
         '--no-warnings',
         '--max-filesize', '15M',
         '--', url,  // '--' prevents url from being interpreted as a flag
@@ -532,7 +535,7 @@ router.post(
     } catch (err) {
       cleanup();
       console.error('[FROM-LINK] === ERROR ===', err.message);
-      safeJson(500, { error: 'Erro ao importar do link. Tente novamente.' });
+      safeJson(500, { error: 'Erro ao importar do link: ' + err.message });
     }
   }
 );
@@ -638,6 +641,7 @@ router.get('/proxy-stream', verifyAuth, async (req, res) => {
       execFile(ytdlpBin, [
         '-J',
         '-f', format,
+        '--force-ipv4',
         '--no-playlist',
         '--no-check-certificates',
         '--no-warnings',
@@ -769,6 +773,7 @@ router.get('/proxy-stream', verifyAuth, async (req, res) => {
         const ytProc = spawn(ytdlpBin, [
           '-f', format,
           '-o', '-',
+          '--force-ipv4',
           '--no-playlist',
           '--no-check-certificates',
           '--no-warnings',
