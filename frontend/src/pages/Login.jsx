@@ -128,6 +128,17 @@ export default function Login() {
             {isLogin ? 'Cadastre-se' : 'Faça login'}
           </button>
         </div>
+
+        {/* Educational Project Disclaimer */}
+        <div className="mt-10 pt-8 border-t border-zinc-900/50 text-center flex flex-col items-center">
+          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400 font-medium uppercase tracking-[0.15em] mb-4">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#1ED45E] animate-pulse" />
+            Projeto Educacional
+          </div>
+          <p className="text-[11px] text-zinc-500 leading-relaxed max-w-[300px]">
+            Este software é um projeto estritamente educacional. Toda responsabilidade pelo conteúdo publicado e reproduzido é do usuário. <span className="text-zinc-300 font-medium">Não incentivamos nem apoiamos a pirataria de qualquer forma.</span>
+          </p>
+        </div>
       </div>
     </div>
   )

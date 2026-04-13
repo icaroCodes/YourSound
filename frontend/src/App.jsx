@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/useAuthStore'
 import { useLikeStore } from './store/useLikeStore'
+import { useDialogStore } from './store/useDialogStore'
 import MainLayout from './layouts/MainLayout'
 import Home from './pages/Home'
 import Login from './pages/Login'
@@ -11,6 +12,7 @@ import PlaylistDetails from './pages/PlaylistDetails'
 import LikedSongs from './pages/LikedSongs'
 import Admin from './pages/Admin'
 import Profile from './pages/Profile'
+import Search from './pages/Search'
 import Dialog from './components/Dialog'
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -41,8 +43,8 @@ function PublicRoute({ children }) {
 function AppSkeleton() {
   return (
     <div className="flex flex-col h-screen bg-black text-white overflow-hidden">
-      {/* Navbar skeleton */}
-      <div className="h-16 flex items-center px-6 gap-4">
+      {/* Navbar skeleton - Desktop Only */}
+      <div className="hidden lg:flex h-16 items-center px-6 gap-4">
         <div className="flex gap-2">
           <div className="w-8 h-8 rounded-full skeleton" />
           <div className="w-8 h-8 rounded-full skeleton" />
@@ -53,10 +55,16 @@ function AppSkeleton() {
         <div className="w-8 h-8 rounded-full skeleton ml-auto" />
       </div>
 
+      {/* Mobile Header Skeleton */}
+      <div className="lg:hidden h-16 flex items-center px-4 justify-between">
+         <div className="h-7 w-24 skeleton" />
+         <div className="h-8 w-8 rounded-full skeleton" />
+      </div>
+
       {/* Body */}
-      <div className="flex flex-1 min-h-0 px-2 gap-2">
-        {/* Sidebar skeleton */}
-        <div className="w-[300px] shrink-0 flex flex-col gap-2">
+      <div className="flex flex-1 min-h-0 lg:px-2 gap-2">
+        {/* Sidebar skeleton - Desktop Only */}
+        <div className="hidden lg:flex w-[300px] shrink-0 flex-col gap-2">
           <div className="bg-[#121212] rounded-lg p-4 flex flex-col gap-5">
             <div className="h-4 w-16 skeleton" />
             <div className="h-4 w-14 skeleton" />
@@ -80,41 +88,42 @@ function AppSkeleton() {
         </div>
 
         {/* Main content skeleton */}
-        <div className="flex-1 bg-[#121212] rounded-lg p-6 overflow-hidden">
-          {/* Pills */}
-          <div className="flex gap-2 mb-6">
+        <div className="flex-1 bg-[#121212] lg:rounded-lg p-4 lg:p-6 overflow-hidden">
+          {/* Pills - Desktop Only */}
+          <div className="hidden lg:flex gap-2 mb-6">
             <div className="h-8 w-16 rounded-full skeleton" />
             <div className="h-8 w-20 rounded-full skeleton" />
             <div className="h-8 w-20 rounded-full skeleton" />
           </div>
-          {/* Recent grid skeleton */}
-          <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 mb-8">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="flex items-center bg-white/[0.03] rounded overflow-hidden h-16">
-                <div className="w-16 h-16 skeleton shrink-0" style={{ borderRadius: 0 }} />
-                <div className="px-4 flex-1">
-                  <div className="h-3.5 w-3/4 skeleton" />
+
+          <div className="space-y-8">
+            <div className="h-7 w-48 skeleton mb-5" />
+            
+            {/* Grid for desktop, Scroll for mobile */}
+            <div className="hidden lg:grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex flex-col gap-3 p-4 rounded-lg bg-white/[0.02]">
+                  <div className="aspect-square rounded-md skeleton" />
+                  <div className="h-4 w-3/4 skeleton" />
+                  <div className="h-3 w-1/2 skeleton" />
                 </div>
-              </div>
-            ))}
-          </div>
-          {/* Section title */}
-          <div className="h-6 w-48 skeleton mb-5" />
-          {/* Cards grid */}
-          <div className="grid grid-cols-3 lg:grid-cols-5 gap-6">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex flex-col gap-3 p-4 rounded-lg bg-white/[0.02]">
-                <div className="aspect-square rounded-md skeleton" />
-                <div className="h-4 w-3/4 skeleton" />
-                <div className="h-3 w-1/2 skeleton" />
-              </div>
-            ))}
+              ))}
+            </div>
+
+            <div className="lg:hidden flex gap-4 overflow-hidden">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="shrink-0 w-[180px] space-y-3">
+                  <div className="aspect-square rounded-[8px] skeleton" />
+                  <div className="h-4 w-3/4 skeleton" />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Player skeleton */}
-      <div className="h-20 shrink-0 px-4 py-3 flex items-center">
+      {/* Player skeleton - Desktop Only appearance */}
+      <div className="hidden lg:flex h-20 shrink-0 px-4 py-3 items-center">
         <div className="w-[30%] flex items-center gap-3">
           <div className="w-14 h-14 rounded skeleton" />
           <div className="flex flex-col gap-2">
@@ -134,6 +143,13 @@ function AppSkeleton() {
           <div className="h-1 w-24 rounded-full skeleton self-center" />
         </div>
       </div>
+
+      {/* Mobile Nav Placeholder */}
+      <div className="lg:hidden h-16 shrink-0 bg-black/90 flex items-center justify-around px-4 border-t border-white/5">
+         {[...Array(4)].map((_, i) => (
+            <div key={i} className="w-8 h-8 rounded skeleton" />
+         ))}
+      </div>
     </div>
   )
 }
@@ -147,7 +163,20 @@ export default function App() {
   }, [initialize])
 
   useEffect(() => {
-    if (session) initLikes()
+    if (session) {
+      initLikes()
+
+      // Mostrar aviso educacional na primeira vez
+      const hasSeenDisclaimer = localStorage.getItem('yoursound_disclaimer_seen')
+      if (!hasSeenDisclaimer) {
+        useDialogStore.getState().showAlert(
+          'Este é um projeto estritamente educacional. Toda responsabilidade pelo conteúdo publicado, importado ou reproduzido nesta plataforma é inteiramente do usuário. Não incentivamos nem apoiamos a pirataria de qualquer forma.',
+          { title: 'Aviso de Responsabilidade', icon: 'info' }
+        ).then(() => {
+          localStorage.setItem('yoursound_disclaimer_seen', 'true')
+        })
+      }
+    }
   }, [session, initLikes])
 
   if (isLoading) {
@@ -164,7 +193,7 @@ export default function App() {
         <Route path="/" element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           <Route index element={<Home />} />
           <Route path="upload" element={<Upload />} />
-          <Route path="search" element={<Home />} />
+          <Route path="search" element={<Search />} />
           <Route path="liked" element={<LikedSongs />} />
           <Route path="playlists" element={<Playlists />} />
           <Route path="playlists/:id" element={<PlaylistDetails />} />

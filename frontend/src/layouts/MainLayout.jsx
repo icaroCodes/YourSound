@@ -1,9 +1,11 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import Navbar from '../components/Navbar'
 import RightPanel from '../components/RightPanel'
 import Player from '../components/Player'
+import MobileNav from '../components/MobileNav'
+import MobileUploadPanel from '../components/MobileUploadPanel'
 import LyricsOverlay from '../components/LyricsOverlay'
 import { usePlayerStore } from '../store/usePlayerStore'
 
@@ -18,7 +20,15 @@ export default function MainLayout() {
   const [rightWidth, setRightWidth] = useState(300)
   const [dragging, setDragging] = useState(null) // 'left' | 'right' | null
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 1024)
+  const [uploadPanelOpen, setUploadPanelOpen] = useState(false)
   const containerRef = useRef(null)
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 1024)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const toggleSidebar = () => {
     if (isSidebarCollapsed) {
@@ -74,41 +84,45 @@ export default function MainLayout() {
 
   return (
     <div className="flex flex-col h-screen bg-spotify-base text-white overflow-hidden font-sans text-sm select-none">
-      {/* Full-width Navbar */}
-      <Navbar />
+      {/* Full-width Navbar - Hidden on Mobile */}
+      <div className="hidden lg:block">
+        <Navbar />
+      </div>
 
       {/* Content Area */}
-      <div ref={containerRef} className="flex flex-1 min-h-0 px-2 pb-2 overflow-hidden">
-        {/* Left Sidebar */}
-        <div className="shrink-0 flex flex-col gap-0 transition-all duration-300 ease-in-out" style={{ width: leftWidth }}>
+      <div ref={containerRef} className="flex flex-1 min-h-0 px-0 lg:px-2 pb-0 lg:pb-2 overflow-hidden">
+        {/* Left Sidebar - Hidden on Mobile */}
+        <div className="hidden lg:flex shrink-0 flex-col gap-0 transition-all duration-300 ease-in-out" style={{ width: leftWidth }}>
           <Sidebar collapsed={isSidebarCollapsed} toggleSidebar={toggleSidebar} />
         </div>
 
-        {/* Left resize handle / Spacing */}
-        {isSidebarCollapsed ? (
-          <div className="w-2 shrink-0 flex items-center justify-center z-10"></div>
-        ) : (
-          <div
-            className="w-2 shrink-0 cursor-col-resize flex items-center justify-center group z-10"
-            onMouseDown={handleMouseDown('left')}
-          >
-            <div className={`w-[3px] h-8 rounded-full transition-colors ${dragging === 'left' ? 'bg-white/40' : 'bg-transparent group-hover:bg-white/20'}`} />
-          </div>
-        )}
+        {/* Left resize handle / Spacing - Hidden on Mobile */}
+        <div className="hidden lg:flex">
+          {isSidebarCollapsed ? (
+            <div className="w-2 shrink-0 flex items-center justify-center z-10"></div>
+          ) : (
+            <div
+              className="w-2 shrink-0 cursor-col-resize flex items-center justify-center group z-10"
+              onMouseDown={handleMouseDown('left')}
+            >
+              <div className={`w-[3px] h-8 rounded-full transition-colors ${dragging === 'left' ? 'bg-white/40' : 'bg-transparent group-hover:bg-white/20'}`} />
+            </div>
+          )}
+        </div>
 
         {/* Center Content */}
-        <main className="flex-1 rounded-lg overflow-hidden min-w-0 relative">
+        <main className="flex-1 lg:rounded-lg overflow-hidden min-w-0 relative">
           {/* Normal page content */}
-          <div className={`h-full overflow-y-auto custom-scrollbar bg-spotify-panel ${isLyricsOpen && currentSong ? 'hidden' : ''}`}>
+          <div className={`h-full overflow-y-auto custom-scrollbar bg-spotify-panel ${isLyricsOpen && currentSong ? 'lg:hidden' : ''}`}>
             <Outlet />
           </div>
-          {/* Lyrics replaces center content */}
+          {/* Lyrics replaces center content (Desktop) or overlays (Mobile handled in CSS/Portal if needed, but here it's fine since it's absolute) */}
           {isLyricsOpen && currentSong && (
             <LyricsOverlay />
           )}
         </main>
 
-        {/* Right resize handle */}
+        {/* Right resize handle - Hidden on Mobile */}
         <div
           className="w-2 shrink-0 cursor-col-resize items-center justify-center group z-10 hidden xl:flex"
           onMouseDown={handleMouseDown('right')}
@@ -116,7 +130,7 @@ export default function MainLayout() {
           <div className={`w-[3px] h-8 rounded-full transition-colors ${dragging === 'right' ? 'bg-white/40' : 'bg-transparent group-hover:bg-white/20'}`} />
         </div>
 
-        {/* Right Panel */}
+        {/* Right Panel - Hidden on Mobile */}
         <div
           className="shrink-0 bg-spotify-panel rounded-lg overflow-y-auto custom-scrollbar hidden xl:block"
           style={{ width: rightWidth }}
@@ -125,11 +139,28 @@ export default function MainLayout() {
         </div>
       </div>
 
-      {/* Bottom Player */}
-      <div className="h-20 shrink-0 w-full px-2 py-2">
-        <Player />
+      {/* Player Section - JS Conditional to prevent duplicate audio */}
+      {isMobile ? (
+        /* Mobile Player (Mini Player) */
+        <div className="absolute bottom-[64px] left-2 right-2 z-40">
+           <Player isMobile={true} />
+        </div>
+      ) : (
+        /* Desktop Player */
+        <div className="h-20 shrink-0 w-full px-2 py-2">
+          <Player />
+        </div>
+      )}
+
+      {/* Mobile Navigation Bar - Glassmorphism */}
+      <div className="block lg:hidden h-16 shrink-0 bg-[#121212]/70 backdrop-blur-xl border-t border-white/5 relative z-50">
+         <MobileNav onAddClick={() => setUploadPanelOpen(true)} />
       </div>
 
+      <MobileUploadPanel 
+        isOpen={uploadPanelOpen} 
+        onClose={() => setUploadPanelOpen(false)} 
+      />
     </div>
   )
 }

@@ -143,6 +143,50 @@ router.get('/search', verifyAuth, async (req, res) => {
 });
 
 /**
+ * GET /api/songs/recent
+ * Returns the latest 10 songs added to the platform.
+ */
+router.get('/recent', verifyAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('songs')
+      .select('*')
+      .or(`and(is_public.eq.true,status.eq.approved),user_id.eq.${req.userId}`)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    console.error('[GET /songs/recent]', err.message);
+    res.status(500).json({ error: 'Erro ao buscar recentes.' });
+  }
+});
+
+/**
+ * GET /api/songs/recommended
+ * Simple recommendation: approved public songs or user's songs, randomized by backend limit.
+ */
+router.get('/recommended', verifyAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('songs')
+      .select('*')
+      .or(`and(is_public.eq.true,status.eq.approved),user_id.eq.${req.userId}`)
+      .limit(20);
+
+    if (error) throw error;
+    
+    // Shuffle in memory for variety
+    const shuffled = (data || []).sort(() => Math.random() - 0.5).slice(0, 10);
+    res.json(shuffled);
+  } catch (err) {
+    console.error('[GET /songs/recommended]', err.message);
+    res.status(500).json({ error: 'Erro ao buscar recomendações.' });
+  }
+});
+
+/**
  * POST /api/songs/upload
  * Upload a song with audio file + optional cover image.
  * 

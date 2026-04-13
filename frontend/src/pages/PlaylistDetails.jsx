@@ -6,11 +6,12 @@ import { api } from '../lib/api'
 import {
   Play, Pause, Shuffle, UserPlus, MoreHorizontal,
   Clock, Search, Plus, Trash2, ListMusic, List, Heart, Camera,
-  Pencil, X, Check, Globe, Lock, GripVertical
+  Pencil, X, Check, Globe, Lock, GripVertical, ArrowLeft, Download
 } from 'lucide-react'
 import { useLikeStore } from '../store/useLikeStore'
 import PlayingBars from '../components/PlayingBars'
 import { useDominantColor } from '../hooks/useDominantColor'
+import AddToPlaylistModal from '../components/AddToPlaylistModal'
 import {
   DndContext,
   closestCenter,
@@ -44,7 +45,7 @@ function applyOrder(songs, savedIds) {
 }
 
 // ── Sortable Row Component ───────────────────────────────────────
-function SortableSongRow({ song, idx, isActive, playing, isOwner, onRowClick, onRemove, onLike, isLiked, formatTime, formatAddedDate, isDragging }) {
+function SortableSongRow({ song, idx, isActive, playing, isOwner, onRowClick, onRemove, onLike, onAddToPlaylist, isLiked, formatTime, formatAddedDate, isDragging }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging: selfDragging } = useSortable({ id: song.playlist_song_id })
 
   const style = {
@@ -124,8 +125,15 @@ function SortableSongRow({ song, idx, isActive, playing, isOwner, onRowClick, on
         </button>
       </div>
 
-      {/* Duration / Remove */}
-      <div className="flex items-center justify-end gap-2">
+      {/* Duration / Add / Remove */}
+      <div className="flex items-center justify-end gap-3">
+        <button
+          onClick={e => { e.stopPropagation(); onAddToPlaylist(song) }}
+          className="text-zinc-400 hover:text-white transition p-1 opacity-0 group-hover:opacity-100"
+          title="Adicionar à outra playlist"
+        >
+          <Plus size={14} />
+        </button>
         {isOwner ? (
           <>
             <button
@@ -151,11 +159,19 @@ export default function PlaylistDetails() {
   const { user, userProfile } = useAuthStore()
   const { playSong, currentSong, isPlaying, togglePlay, updateQueue } = usePlayerStore()
   const { isLiked, toggleLike } = useLikeStore()
+  const [playlistModalSong, setPlaylistModalSong] = useState(null)
 
   const [playlist, setPlaylist] = useState(null)
   const [songs, setSongs] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024)
+
+  useEffect(() => {
+    const handleResize = () => setIsDesktop(window.innerWidth >= 1024)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const [searchQuery, setSearchQuery] = useState('')
   const [allAvailableSongs, setAllAvailableSongs] = useState([])
@@ -436,35 +452,71 @@ export default function PlaylistDetails() {
   // ── Loading skeleton ──
   if (loading) {
     return (
-      <div className="pb-8">
-        <div className="px-6 pt-12 pb-6 flex items-end gap-6" style={{ background: 'linear-gradient(to bottom, #2a2a2a 0%, #1a1a1a 50%, #121212 100%)' }}>
-          <div className="w-57.5 h-57.5 rounded skeleton shrink-0" />
-          <div className="flex flex-col gap-3 flex-1 pb-1">
-            <div className="h-3 w-20 skeleton" />
-            <div className="h-14 w-3/4 skeleton" />
-            <div className="h-4 w-48 skeleton mt-1" />
-          </div>
-        </div>
-        <div className="px-6 py-5 flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full skeleton" />
-          <div className="w-8 h-8 rounded-full skeleton" />
-          <div className="w-8 h-8 rounded-full skeleton" />
-        </div>
-        <div className="px-6 space-y-1">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="flex items-center gap-4 px-4 py-2">
-              <div className="h-3 w-4 skeleton" />
-              <div className="w-10 h-10 rounded skeleton shrink-0" />
-              <div className="flex flex-col gap-1.5 flex-1">
-                <div className="h-3.5 w-32 skeleton" />
+      <div className="pb-24">
+        {isDesktop ? (
+          /* Desktop Skeleton */
+          <>
+            <div className="px-6 pt-12 pb-6 flex items-end gap-6" style={{ background: 'linear-gradient(to bottom, #2a2a2a 0%, #121212 100%)' }}>
+              <div className="w-57.5 h-57.5 rounded skeleton shrink-0" />
+              <div className="flex flex-col gap-3 flex-1 pb-1">
                 <div className="h-3 w-20 skeleton" />
+                <div className="h-14 w-3/4 skeleton" />
+                <div className="h-4 w-48 skeleton mt-1" />
               </div>
-              <div className="h-3 w-24 skeleton hidden md:block" />
-              <div className="h-3 w-20 skeleton hidden lg:block" />
-              <div className="h-3 w-10 skeleton ml-auto" />
             </div>
-          ))}
-        </div>
+            <div className="px-6 py-5 flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full skeleton" />
+              <div className="w-8 h-8 rounded-full skeleton" />
+            </div>
+            <div className="px-6 space-y-1">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4 px-4 py-2">
+                  <div className="w-10 h-10 rounded skeleton shrink-0" />
+                  <div className="flex flex-col gap-1.5 flex-1">
+                    <div className="h-3.5 w-32 skeleton" />
+                    <div className="h-3 w-20 skeleton" />
+                  </div>
+                  <div className="h-3 w-10 skeleton ml-auto" />
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          /* Mobile Skeleton */
+          <div className="flex flex-col animate-pulse">
+             <div className="pt-16 px-8 flex flex-col items-center gap-8 bg-gradient-to-b from-zinc-800 to-[#121212] pb-10">
+                <div className="w-64 aspect-square rounded shadow-2xl bg-white/5" />
+                <div className="w-full space-y-4">
+                   <div className="h-8 w-3/4 bg-white/5 rounded" />
+                   <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-white/5" />
+                      <div className="h-4 w-24 bg-white/5 rounded" />
+                   </div>
+                   <div className="h-3 w-40 bg-white/5 rounded" />
+                </div>
+             </div>
+             <div className="px-4 py-6 flex items-center justify-between">
+                <div className="flex gap-6 items-center">
+                   <div className="w-6 h-6 rounded-full bg-white/5" />
+                   <div className="w-6 h-6 rounded-full bg-white/5" />
+                   <div className="w-6 h-6 rounded-full bg-white/5" />
+                </div>
+                <div className="w-14 h-14 rounded-full bg-white/5" />
+             </div>
+             <div className="px-4 space-y-6">
+                {[...Array(4)].map((_, i) => (
+                   <div key={i} className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded bg-white/5" />
+                      <div className="flex-1 space-y-2">
+                         <div className="h-4 w-1/2 bg-white/5 rounded" />
+                         <div className="h-3 w-1/4 bg-white/5 rounded" />
+                      </div>
+                      <div className="w-6 h-6 rounded-full bg-white/5" />
+                   </div>
+                ))}
+             </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -484,6 +536,202 @@ export default function PlaylistDetails() {
 
   const isOwner = playlist.user_id === user?.id
 
+  if (!isDesktop) {
+    return (
+      <div className="flex flex-col min-h-screen bg-black text-white pb-32">
+        {/* Mobile Header with Gradient */}
+        <div 
+          className="relative px-6 pt-12 pb-8 flex flex-col items-center gap-8"
+          style={{ 
+            background: `linear-gradient(to bottom, ${bannerColor} 0%, #121212 90%)` 
+          }}
+        >
+          {/* Back Button */}
+          <button 
+            onClick={() => navigate(-1)}
+            className="absolute top-12 left-6 text-white bg-black/20 hover:bg-black/40 p-2 rounded-full transition-colors z-20"
+          >
+            <ArrowLeft size={24} />
+          </button>
+
+          {/* Large Cover Art */}
+          <div 
+            className="w-64 aspect-square shadow-2xl relative group mt-4"
+            onClick={handleCoverClick}
+          >
+            {coverUrl ? (
+              <img src={coverUrl} alt={playlist.name} className="w-full h-full object-cover rounded-[4px]" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-[#282828] rounded-[4px]">
+                <ListMusic size={64} className="text-zinc-600" />
+              </div>
+            )}
+            {isOwner && (
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-[4px] opacity-0 group-hover:opacity-100 transition-opacity">
+                {uploadingCover ? <div className="animate-spin rounded-full h-8 w-8 border-2 border-white border-t-transparent" /> : <Camera size={32} />}
+              </div>
+            )}
+          </div>
+
+          {/* Playlist Metadata */}
+          <div className="w-full text-left space-y-2 mt-4">
+            <h1 className="text-2xl font-black tracking-tight leading-tight">{playlist.name}</h1>
+            <div className="flex items-center gap-2">
+               <div className="w-6 h-6 rounded-full bg-linear-to-br from-zinc-700 to-zinc-800 flex items-center justify-center overflow-hidden border border-white/5">
+                  <span className="text-[10px] text-zinc-400 font-bold">{isOwner ? userProfile?.display_name?.[0]?.toUpperCase() : 'U'}</span>
+               </div>
+               <span className="text-sm font-bold text-white/90">{isOwner ? userProfile?.display_name : (playlist.user_name || 'Usuário')}</span>
+            </div>
+            <div className="text-[13px] text-zinc-400 font-medium">
+               {songs.length} salvamento{songs.length !== 1 ? 's' : ''} • {formatTotalTime(totalDuration)}
+            </div>
+          </div>
+        </div>
+
+        {/* Action Bar Mobile */}
+        <div className="px-6 py-4 flex items-center justify-between sticky top-0 bg-black/95 backdrop-blur-md z-10 transition-colors border-b border-white/[0.02]">
+           <div className="flex items-center gap-7">
+              <button 
+                className="text-spotify-green transition-transform active:scale-125"
+              >
+                <Heart size={30} className="fill-spotify-green text-spotify-green" />
+              </button>
+              <button className="text-zinc-400">
+                <Download size={24} strokeWidth={1.5} />
+              </button>
+              <button 
+                className="text-zinc-400" 
+                onClick={() => setMenuOpen(!menuOpen)}
+              >
+                <MoreHorizontal size={24} />
+              </button>
+           </div>
+
+           <button 
+             onClick={handlePlayAll}
+             className="w-14 h-14 bg-spotify-green rounded-full flex items-center justify-center shadow-xl active:scale-95 transition-transform"
+           >
+             {isPlaylistPlaying 
+               ? <Pause fill="black" size={28} /> 
+               : <Play fill="black" size={28} className="translate-x-0.5" />
+             }
+           </button>
+        </div>
+
+        {/* Mobile Tracks List */}
+        <div className="px-4 space-y-2 mt-4">
+           {songs.map((song) => {
+             const isActive = currentSong?.id === song.id;
+             return (
+               <div 
+                 key={song.playlist_song_id}
+                 className="flex items-center gap-4 group active:bg-white/5 p-2 rounded-md transition-colors"
+                 onClick={() => handleRowClick(song)}
+               >
+                  <div className="relative w-12 h-12 rounded-[4px] overflow-hidden bg-zinc-800 shrink-0 shadow-md">
+                     {song.cover_url ? (
+                       <img src={song.cover_url} className="w-full h-full object-cover" alt="" />
+                     ) : (
+                        <div className="w-full h-full flex items-center justify-center text-zinc-600 text-sm">&#9835;</div>
+                     )}
+                     {isActive && isPlaying && (
+                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                          <PlayingBars isPlaying={true} height={14} />
+                       </div>
+                     )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                     <h4 className={`text-base font-bold truncate tracking-tight ${isActive ? 'text-spotify-green' : 'text-white'}`}>
+                        {song.title}
+                     </h4>
+                     <div className="flex items-center gap-1.5">
+                        {song.explicit && <span className="bg-zinc-500 text-black text-[9px] px-1 rounded-xs font-black h-3.5 flex items-center">E</span>}
+                        <p className="text-[13px] text-zinc-400 truncate leading-tight">{song.artist}</p>
+                     </div>
+                  </div>
+                  <div className="flex items-center gap-6">
+                     <button 
+                       onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
+                       className={`transition-all active:scale-125 ${isLiked(song.id) ? 'text-spotify-green' : 'text-zinc-500'}`}
+                     >
+                        <Heart size={22} fill={isLiked(song.id) ? "currentColor" : "none"} />
+                     </button>
+                     <button 
+                        onClick={(e) => { e.stopPropagation(); setPlaylistModalSong(song) }}
+                        className="text-zinc-500 hover:text-white transition-all active:scale-125"
+                     >
+                        <Plus size={22} />
+                     </button>
+                  </div>
+               </div>
+             );
+           })}
+
+           {/* ─── Add Songs Section (Mobile) ─── */}
+           {isOwner && (
+              <div className="mt-12 mb-20">
+                 {!showSearch ? (
+                    <button 
+                      onClick={() => openSearch()}
+                      className="w-full py-4 border-2 border-dashed border-white/10 rounded-2xl flex items-center justify-center gap-2 text-zinc-400 font-bold active:scale-95 transition-transform"
+                    >
+                      <Plus size={20} />
+                      Adicionar à esta playlist
+                    </button>
+                 ) : (
+                    <div className="bg-[#181818] p-4 rounded-2xl border border-white/5 space-y-4">
+                       <div className="flex items-center justify-between">
+                          <h3 className="font-bold text-lg">Encontrar músicas</h3>
+                          <button onClick={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]) }} className="text-zinc-500 text-sm font-bold uppercase">Fechar</button>
+                       </div>
+                       <div className="relative">
+                          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
+                          <input 
+                            autoFocus
+                            type="text"
+                            value={searchQuery}
+                            onChange={handleSearch}
+                            placeholder="Buscar no catálogo..."
+                            className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-11 pr-4 text-sm focus:ring-1 focus:ring-spotify-green outline-none"
+                          />
+                       </div>
+                       <div className="space-y-3 pt-2">
+                          {searching ? (
+                             <div className="py-4 text-center text-zinc-500 text-sm animate-pulse">Buscando...</div>
+                          ) : searchResults.length === 0 ? (
+                             <div className="py-4 text-center text-zinc-500 text-xs font-bold uppercase tracking-widest">
+                                {searchQuery ? 'Nenhum resultado' : 'Músicas disponíveis'}
+                             </div>
+                          ) : (
+                             searchResults.map(song => (
+                                <div key={song.id} className="flex items-center justify-between gap-3">
+                                   <div className="flex items-center gap-3 min-w-0">
+                                      <img src={song.cover_url} className="w-10 h-10 rounded object-cover shrink-0 bg-zinc-800" alt="" />
+                                      <div className="flex flex-col min-w-0">
+                                         <span className="text-sm font-bold truncate">{song.title}</span>
+                                         <span className="text-[11px] text-zinc-400 truncate">{song.artist}</span>
+                                      </div>
+                                   </div>
+                                   <button 
+                                     onClick={() => addSongToPlaylist(song)}
+                                     className="px-4 py-2 bg-white text-black rounded-full text-xs font-black active:scale-95 transition-transform"
+                                   >
+                                     Adicionar
+                                   </button>
+                                </div>
+                             ))
+                          )}
+                       </div>
+                    </div>
+                 )}
+              </div>
+           )}
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Desktop UI (Preserved) ───
   return (
     <div className="pb-8">
       {/* Hidden file input for cover */}
@@ -765,6 +1013,7 @@ export default function PlaylistDetails() {
                     onRowClick={handleRowClick}
                     onRemove={removeSong}
                     onLike={toggleLike}
+                    onAddToPlaylist={setPlaylistModalSong}
                     isLiked={isLiked}
                     formatTime={formatTime}
                     formatAddedDate={formatAddedDate}
@@ -797,64 +1046,71 @@ export default function PlaylistDetails() {
 
       {/* ─── Add Songs Section (Owner only) ─── */}
       {isOwner && (
-        <div className="px-6 mt-10">
-          {!showSearch && songs.length > 0 && (
-            <button
-              onClick={() => openSearch()}
-              className="flex items-center gap-2 text-zinc-400 hover:text-white text-sm font-semibold transition"
-            >
-              <Plus size={18} /> Adicionar músicas
-            </button>
-          )}
-
-          {showSearch && (
-            <div className="border-t border-white/10 pt-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-white">Vamos adicionar algo à sua playlist</h3>
+        <div className="px-6 mt-16 mb-20">
+          {!showSearch ? (
+            <div className="py-12 border-t border-white/5 flex flex-col items-center gap-4">
+               <h3 className="text-xl font-bold text-zinc-400">Quer adicionar mais algo?</h3>
+               <button
+                 onClick={() => openSearch()}
+                 className="flex items-center gap-2 bg-white text-black px-6 py-2.5 rounded-full font-black text-sm hover:scale-105 active:scale-95 transition-all shadow-xl"
+               >
+                 <Plus size={20} strokeWidth={3} />
+                 Encontrar músicas
+               </button>
+            </div>
+          ) : (
+            <div className="border-t border-white/10 pt-10">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h3 className="text-2xl font-black text-white">Vamos adicionar algo à sua playlist</h3>
+                  <p className="text-zinc-500 text-sm mt-1">Busque no catálogo do YourSound</p>
+                </div>
                 <button
                   onClick={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]) }}
-                  className="text-zinc-400 hover:text-white text-sm font-semibold"
+                  className="px-4 py-2 rounded-full border border-white/10 text-zinc-400 hover:text-white hover:border-white text-xs font-black uppercase tracking-widest transition-all"
                 >
-                  Fechar
+                  Fechar busca
                 </button>
               </div>
 
-              <div className="relative max-w-md">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+              <div className="relative max-w-xl group">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-white transition-colors" size={20} />
                 <input
                   autoFocus
                   type="text"
                   value={searchQuery}
                   onChange={handleSearch}
                   placeholder="Pesquisar músicas ou artistas"
-                  className="w-full pl-10 pr-4 py-2.5 bg-white/7 border border-white/10 rounded text-white text-sm focus:outline-none focus:border-white/30 placeholder:text-zinc-500"
+                  className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white text-base font-bold focus:outline-none focus:border-white/20 placeholder:text-zinc-600 transition-all"
                 />
               </div>
 
-              <div className="mt-4 space-y-1">
+              <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
                   {searching ? (
-                    <div className="py-4 text-center text-zinc-500 text-sm">Buscando...</div>
+                    <div className="col-span-2 py-10 text-center text-zinc-500 text-sm animate-pulse">Vasculhando nossa biblioteca...</div>
                   ) : searchResults.length === 0 ? (
-                    <div className="py-4 text-center text-zinc-500 text-sm">
-                      {searchQuery ? 'Nenhum resultado encontrado.' : 'Nenhuma música disponível.'}
+                    <div className="col-span-2 py-10 text-center text-zinc-500 text-sm font-bold uppercase tracking-widest">
+                      {searchQuery ? 'Sem resultados para sua busca.' : 'Nenhuma música extra disponível no momento.'}
                     </div>
                   ) : (
                     searchResults.map(song => (
-                      <div key={song.id} className="flex items-center justify-between p-2 rounded hover:bg-white/6 transition">
-                        <div className="flex items-center gap-3 min-w-0">
-                          {song.cover_url ? (
-                            <img src={song.cover_url} className="w-10 h-10 rounded object-cover shrink-0" alt="" />
-                          ) : (
-                            <div className="w-10 h-10 rounded bg-zinc-800 flex items-center justify-center shrink-0 text-zinc-500 text-xs">&#9835;</div>
-                          )}
+                      <div key={song.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition group">
+                        <div className="flex items-center gap-4 min-w-0">
+                          <div className="relative w-12 h-12 rounded overflow-hidden bg-zinc-800 shrink-0">
+                             {song.cover_url ? (
+                               <img src={song.cover_url} className="w-full h-full object-cover" alt="" />
+                             ) : (
+                               <div className="w-full h-full flex items-center justify-center text-zinc-600 text-xs">&#9835;</div>
+                             )}
+                          </div>
                           <div className="flex flex-col min-w-0">
-                            <span className="text-sm font-medium text-white truncate">{song.title}</span>
+                            <span className="text-base font-bold text-white truncate">{song.title}</span>
                             <span className="text-xs text-zinc-400 truncate">{song.artist}</span>
                           </div>
                         </div>
                         <button
                           onClick={() => addSongToPlaylist(song)}
-                          className="px-4 py-1.5 border border-white/20 rounded-full text-sm font-semibold text-white hover:border-white hover:scale-105 transition shrink-0 ml-4"
+                          className="px-5 py-2 border-2 border-white/10 rounded-full text-xs font-black text-white hover:bg-white hover:text-black hover:border-white transition-all transform active:scale-95"
                         >
                           Adicionar
                         </button>
@@ -864,7 +1120,11 @@ export default function PlaylistDetails() {
                 </div>
             </div>
           )}
-        </div>
+      {playlistModalSong && (
+        <AddToPlaylistModal 
+          song={playlistModalSong} 
+          onClose={() => setPlaylistModalSong(null)} 
+        />
       )}
     </div>
   )

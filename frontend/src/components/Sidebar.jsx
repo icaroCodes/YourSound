@@ -159,6 +159,7 @@ export default function Sidebar({ collapsed, toggleSidebar }) {
                 )}
               </div>
 
+
               {userProfile?.role === 'admin' && (
                 <>
                   <button onClick={() => setAdminModalOpen(true)} className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-zinc-400 hover:text-white relative" title="Notificações / Pedidos">
@@ -175,7 +176,6 @@ export default function Sidebar({ collapsed, toggleSidebar }) {
             </div>
           )}
         </div>
-
         {/* Filter Pills / Hidden when collapsed */}
         {!collapsed && (
           <div className="px-4 pb-2 flex gap-2 overflow-x-auto">
@@ -264,6 +264,18 @@ export default function Sidebar({ collapsed, toggleSidebar }) {
             </Link>
           ))}
         </div>
+
+        {/* ─── Educational Footer ─── */}
+        {!collapsed && (
+          <div className="pt-4 pb-4 px-4 mt-2 border-t border-white/[0.03] text-center">
+            <div className="flex flex-col gap-1">
+              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Projeto Educacional</p>
+              <p className="text-[9px] text-zinc-600 leading-normal px-2">
+                Conteúdo de responsabilidade do usuário. Não incentivamos a pirataria.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </>
   )

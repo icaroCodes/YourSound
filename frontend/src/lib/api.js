@@ -62,6 +62,18 @@ export const api = {
     return handleResponse(res);
   },
 
+  async getRecentSongs() {
+    const headers = getAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/songs/recent`, { headers });
+    return handleResponse(res);
+  },
+
+  async getRecommendedSongs() {
+    const headers = getAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/songs/recommended`, { headers });
+    return handleResponse(res);
+  },
+
   async searchSongs(query) {
     const headers = getAuthHeaders();
     const res = await fetch(`${API_BASE}/api/songs/search?q=${encodeURIComponent(query)}`, { headers });

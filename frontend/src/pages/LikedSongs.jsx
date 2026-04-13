@@ -2,13 +2,15 @@ import { useState } from 'react'
 import { useAuthStore } from '../store/useAuthStore'
 import { usePlayerStore } from '../store/usePlayerStore'
 import { useLikeStore } from '../store/useLikeStore'
-import { Play, Pause, Shuffle, Clock, List, Heart } from 'lucide-react'
+import { Play, Pause, Shuffle, Clock, List, Heart, Plus } from 'lucide-react'
+import AddToPlaylistModal from '../components/AddToPlaylistModal'
 
 export default function LikedSongs() {
   const { userProfile } = useAuthStore()
   const { playSong, currentSong, isPlaying, togglePlay } = usePlayerStore()
   const { likedSongs, toggleLike, isLiked } = useLikeStore()
   const [hoveredRow, setHoveredRow] = useState(null)
+  const [playlistModalSong, setPlaylistModalSong] = useState(null)
 
   const username = userProfile?.email?.split('@')[0] || 'Usuário'
 
@@ -110,11 +112,12 @@ export default function LikedSongs() {
         ) : (
           <>
             {/* Table Header */}
-            <div className="grid grid-cols-[40px_2fr_1.5fr_1.2fr_40px_60px] items-center px-4 py-2 border-b border-white/10 text-zinc-400 text-xs uppercase tracking-wider font-medium mb-2">
+            <div className="grid grid-cols-[40px_2fr_1.5fr_1.2fr_40px_40px_60px] items-center px-4 py-2 border-b border-white/10 text-zinc-400 text-xs uppercase tracking-wider font-medium mb-2">
               <span className="text-center">#</span>
               <span>Título</span>
               <span className="hidden md:block">Álbum</span>
               <span className="hidden lg:block">Adicionada em</span>
+              <span></span>
               <span></span>
               <span className="flex justify-end"><Clock size={14} /></span>
             </div>
@@ -128,7 +131,7 @@ export default function LikedSongs() {
               return (
                 <div
                   key={song.id}
-                  className={`group grid grid-cols-[40px_2fr_1.5fr_1.2fr_40px_60px] items-center px-4 py-1.5 rounded-md transition-colors cursor-pointer ${
+                  className={`group grid grid-cols-[40px_2fr_1.5fr_1.2fr_40px_40px_60px] items-center px-4 py-1.5 rounded-md transition-colors cursor-pointer ${
                     isActive ? 'bg-white/8' : 'hover:bg-white/6'
                   }`}
                   onMouseEnter={() => setHoveredRow(idx)}
@@ -187,6 +190,17 @@ export default function LikedSongs() {
                     </button>
                   </div>
 
+                  {/* Add to Playlist */}
+                  <div className="flex items-center justify-center">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setPlaylistModalSong(song) }}
+                      className="text-zinc-400 hover:text-white transition-all opacity-0 group-hover:opacity-100 p-1"
+                      title="Adicionar à playlist"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+
                   {/* Duration */}
                   <div className="flex items-center justify-end">
                     <span className="text-sm text-zinc-400">{formatTime(song.duration)}</span>
@@ -197,6 +211,13 @@ export default function LikedSongs() {
           </>
         )}
       </div>
+
+      {playlistModalSong && (
+        <AddToPlaylistModal 
+          song={playlistModalSong} 
+          onClose={() => setPlaylistModalSong(null)} 
+        />
+      )}
     </div>
   )
 }
