@@ -7,6 +7,7 @@ import Player from '../components/Player'
 import MobileNav from '../components/MobileNav'
 import MobileUploadPanel from '../components/MobileUploadPanel'
 import LyricsOverlay from '../components/LyricsOverlay'
+import Onboarding from '../components/Onboarding'
 import { usePlayerStore } from '../store/usePlayerStore'
 
 const MIN_SIDEBAR = 200
@@ -166,10 +167,13 @@ export default function MainLayout() {
          <MobileNav onAddClick={() => setUploadPanelOpen(true)} />
       </div>
 
-      <MobileUploadPanel 
-        isOpen={uploadPanelOpen} 
-        onClose={() => setUploadPanelOpen(false)} 
+      <MobileUploadPanel
+        isOpen={uploadPanelOpen}
+        onClose={() => setUploadPanelOpen(false)}
       />
+
+      {/* Onboarding Overlay */}
+      <Onboarding />
     </div>
   )
 }

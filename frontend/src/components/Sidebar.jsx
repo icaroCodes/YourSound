@@ -5,6 +5,7 @@ import { api } from '../lib/api'
 import { useAuthStore } from '../store/useAuthStore'
 import { useLikeStore } from '../store/useLikeStore'
 import { usePlayerStore } from '../store/usePlayerStore'
+import { useOnboardingStore } from '../store/useOnboardingStore'
 import AdminRequestsModal from './AdminRequestsModal'
 
 export default function Sidebar({ collapsed, toggleSidebar }) {
@@ -77,6 +78,7 @@ export default function Sidebar({ collapsed, toggleSidebar }) {
                   onClick={() => { setMenuOpen(o => !o); setCreateModalOpen(false) }}
                   className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-zinc-400 hover:text-white"
                   title="Criar"
+                  data-onboarding="create-playlist-btn"
                 >
                   <Plus size={20} />
                 </button>
@@ -86,7 +88,7 @@ export default function Sidebar({ collapsed, toggleSidebar }) {
                     {!createModalOpen ? (
                       <>
                         <button
-                          onClick={() => setCreateModalOpen(true)}
+                          onClick={() => { setCreateModalOpen(true); useOnboardingStore.getState().completeAction('open-create-playlist') }}
                           className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/10 transition-colors text-left"
                         >
                           <div className="w-9 h-9 bg-white/10 rounded flex items-center justify-center shrink-0">

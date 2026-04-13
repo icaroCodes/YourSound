@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { X, Lock, Globe, Camera, Loader2, Music2 } from 'lucide-react'
 import { api } from '../lib/api'
+import { useOnboardingStore } from '../store/useOnboardingStore'
 
 export default function CreatePlaylistModal({ isOpen, onClose, onCreated }) {
   const [name, setName] = useState('')
@@ -30,7 +31,7 @@ export default function CreatePlaylistModal({ isOpen, onClose, onCreated }) {
     try {
       // 1. Create playlist
       const playlist = await api.createPlaylist(name, isPublic)
-      
+
       // 2. Upload cover if exists
       if (coverFile) {
         await api.updatePlaylistCover(playlist.id, coverFile)
@@ -48,7 +49,7 @@ export default function CreatePlaylistModal({ isOpen, onClose, onCreated }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={handleClose} />
-      
+
       <div className="relative w-full max-w-md bg-[#242424] rounded-3xl p-8 shadow-2xl animate-in zoom-in duration-200">
         <div className="flex items-center justify-between mb-8">
           <h2 className="text-2xl font-black text-white">Nova Playlist</h2>
@@ -66,8 +67,9 @@ export default function CreatePlaylistModal({ isOpen, onClose, onCreated }) {
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Cover Upload */}
           <div className="flex flex-col items-center gap-4">
-            <div 
+            <div
               className="relative w-40 h-40 bg-zinc-800 rounded-2xl overflow-hidden shadow-2xl group cursor-pointer border-2 border-dashed border-white/5 hover:border-spotify-green transition-colors"
+              data-onboarding="modal-cover-upload"
               onClick={() => document.getElementById('playlist-cover-input').click()}
             >
               {coverPreview ? (
@@ -81,16 +83,17 @@ export default function CreatePlaylistModal({ isOpen, onClose, onCreated }) {
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                 <Camera size={24} className="text-white" />
               </div>
-              <input 
+              <input
                 id="playlist-cover-input"
-                type="file" 
-                accept="image/*" 
-                className="hidden" 
+                type="file"
+                accept="image/*"
+                className="hidden"
                 onChange={e => {
                   const f = e.target.files[0]
                   if (f) {
                     setCoverFile(f)
                     setCoverPreview(URL.createObjectURL(f))
+                    useOnboardingStore.getState().completeAction('modal-upload-image')
                   }
                 }}
               />
@@ -100,7 +103,7 @@ export default function CreatePlaylistModal({ isOpen, onClose, onCreated }) {
           <div className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-zinc-500 uppercase ml-1 tracking-widest text-center block">Nome da Playlist</label>
-              <input 
+              <input
                 type="text"
                 autoFocus
                 value={name}
@@ -114,14 +117,14 @@ export default function CreatePlaylistModal({ isOpen, onClose, onCreated }) {
             {/* Visibility Toggle */}
             <button
               type="button"
-              onClick={() => setIsPublic(!isPublic)}
-              className={`w-full flex items-center justify-between p-5 rounded-2xl border transition-all ${
-                isPublic ? 'bg-spotify-green/10 border-spotify-green/20' : 'bg-white/5 border-white/10'
-              }`}
+              onClick={() => { setIsPublic(!isPublic); useOnboardingStore.getState().completeAction('modal-toggle-privacy') }}
+              data-onboarding="modal-privacy-toggle"
+              className={`w-full flex items-center justify-between p-5 rounded-2xl border transition-all ${isPublic ? 'bg-spotify-green/10 border-spotify-green/20' : 'bg-white/5 border-white/10'
+                }`}
             >
               <div className="flex items-center gap-4">
                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isPublic ? 'bg-spotify-green/20 text-spotify-green' : 'bg-zinc-800 text-zinc-500'}`}>
-                   {isPublic ? <Globe size={24} /> : <Lock size={24} />}
+                  {isPublic ? <Globe size={24} /> : <Lock size={24} />}
                 </div>
                 <div className="text-left">
                   <p className="text-sm font-bold text-white">{isPublic ? 'Pública' : 'Privada'}</p>
@@ -136,6 +139,8 @@ export default function CreatePlaylistModal({ isOpen, onClose, onCreated }) {
 
           <button
             type="submit"
+            data-onboarding="modal-submit-btn"
+            onClick={() => useOnboardingStore.getState().completeAction('modal-submit')}
             disabled={loading || !name.trim()}
             className="w-full bg-[#1ED45E] text-black py-5 rounded-full font-black text-lg active:scale-95 transition-transform disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2"
           >

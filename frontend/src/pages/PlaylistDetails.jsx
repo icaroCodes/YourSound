@@ -9,6 +9,7 @@ import {
   Pencil, X, Check, Globe, Lock, GripVertical, ArrowLeft, Download
 } from 'lucide-react'
 import { useLikeStore } from '../store/useLikeStore'
+import { useOnboardingStore } from '../store/useOnboardingStore'
 import PlayingBars from '../components/PlayingBars'
 import { useDominantColor } from '../hooks/useDominantColor'
 import AddToPlaylistModal from '../components/AddToPlaylistModal'
@@ -174,6 +175,7 @@ function SortableMobileSongRow({ song, isActive, playing, isOwner, onRowClick, o
          <div 
            className="touch-none cursor-grab active:cursor-grabbing p-2 shrink-0 opacity-80"
            onClick={e => e.stopPropagation()}
+           data-onboarding="playlist-sort-handle"
            {...attributes}
            {...listeners}
          >
@@ -272,6 +274,7 @@ export default function PlaylistDetails() {
       const next = arrayMove(prev, oldIdx, newIdx)
       saveOrder(id, next.map(s => s.playlist_song_id))
       syncQueue(next)
+      useOnboardingStore.getState().completeAction('reorder')
       return next
     })
   }
@@ -341,6 +344,7 @@ export default function PlaylistDetails() {
       setUploadingCover(true)
       const data = await api.updatePlaylistCover(id, file)
       setPlaylist(prev => ({ ...prev, cover_url: data.cover_url }))
+      useOnboardingStore.getState().completeAction('upload-image')
     } catch (err) {
       console.error('Erro ao enviar capa:', err.message)
     } finally {
@@ -624,6 +628,7 @@ export default function PlaylistDetails() {
           {/* Large Cover Art */}
           <div 
             className="w-64 aspect-square shadow-2xl relative group mt-4"
+            data-onboarding="playlist-cover-upload"
             onClick={handleCoverClick}
           >
             {coverUrl ? (
@@ -978,7 +983,8 @@ export default function PlaylistDetails() {
                 <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Visibilidade</label>
                 <button
                   type="button"
-                  onClick={() => setEditIsPublic(p => !p)}
+                  onClick={() => { setEditIsPublic(p => !p); useOnboardingStore.getState().completeAction('toggle-privacy') }}
+                  data-onboarding="privacy-toggle-btn"
                   className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg border transition text-sm font-medium ${
                     editIsPublic
                       ? 'border-green-500/30 bg-green-500/10 text-green-400'

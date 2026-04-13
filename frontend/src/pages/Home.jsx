@@ -7,6 +7,7 @@ import PlayingBars from '../components/PlayingBars'
 import CreatePlaylistModal from '../components/CreatePlaylistModal'
 import { useNavigate } from 'react-router-dom'
 import { Plus } from 'lucide-react'
+import { useOnboardingStore } from '../store/useOnboardingStore'
 
 export default function Home() {
   const [songs, setSongs] = useState([])
@@ -128,19 +129,24 @@ export default function Home() {
            <div className="flex items-center gap-4">
               <h1 className="text-[25px] font-black tracking-tight text-white">{greeting}</h1>
               <button 
-                onClick={() => setIsCreateModalOpen(true)}
+                onClick={() => { setIsCreateModalOpen(true); useOnboardingStore.getState().completeAction('create-playlist') }}
+                data-onboarding="create-playlist-btn"
                 className="w-8 h-8 bg-spotify-green text-black rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform"
               >
                 <Plus size={20} strokeWidth={3} />
               </button>
            </div>
            <div className="relative">
-             <button 
-               className="text-white active:scale-95 transition-transform"
-               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-             >
-                <Settings size={28} strokeWidth={1.5} />
-             </button>
+              <button 
+                className="text-white active:scale-95 transition-transform"
+                data-onboarding="profile-menu-btn"
+                onClick={() => {
+                  setIsMobileMenuOpen(!isMobileMenuOpen);
+                  useOnboardingStore.getState().completeAction('open-settings');
+                }}
+              >
+                 <Settings size={28} strokeWidth={1.5} />
+              </button>
              {isMobileMenuOpen && (
                <>
                  <div className="fixed inset-0 z-40" onClick={() => setIsMobileMenuOpen(false)} />

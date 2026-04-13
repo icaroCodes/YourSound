@@ -1,12 +1,20 @@
 import { Home, Search, Library, Plus } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
+import { useOnboardingStore } from '../store/useOnboardingStore'
 
 export default function MobileNav({ onAddClick }) {
   const { pathname } = useLocation()
 
   return (
     <div className="flex items-center justify-center h-full gap-12">
-      <Link to="/" className="flex flex-col items-center gap-1 transition-transform active:scale-90">
+      <Link 
+        to="/" 
+        data-onboarding="mobile-home-btn"
+        className="flex flex-col items-center gap-1 transition-transform active:scale-90"
+        onClick={() => {
+          useOnboardingStore.getState().completeAction('go-home')
+        }}
+      >
         <Home 
           size={24} 
           strokeWidth={pathname === '/' ? 2.5 : 2}
@@ -17,7 +25,8 @@ export default function MobileNav({ onAddClick }) {
       </Link>
 
       <button 
-        onClick={onAddClick}
+        onClick={() => { onAddClick(); useOnboardingStore.getState().completeAction('create-playlist') }}
+        data-onboarding="create-playlist-btn"
         className="flex flex-col items-center gap-1 transition-transform active:scale-90"
       >
         <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-black shadow-lg">
@@ -26,7 +35,14 @@ export default function MobileNav({ onAddClick }) {
         <span className="text-[10px] font-bold text-zinc-500">Adicionar</span>
       </button>
 
-      <Link to="/search" className="flex flex-col items-center gap-1 transition-transform active:scale-90">
+      <Link 
+        to="/search" 
+        data-onboarding="mobile-search" 
+        className="flex flex-col items-center gap-1 transition-transform active:scale-90"
+        onClick={() => {
+          useOnboardingStore.getState().completeAction('open-search')
+        }}
+      >
         <Search 
           size={24} 
           strokeWidth={pathname === '/search' ? 2.5 : 2}

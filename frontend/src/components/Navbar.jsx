@@ -4,6 +4,7 @@ import { Search, Users, Upload, Settings, X, Play, ChevronLeft, ChevronRight, Ho
 import { useAuthStore } from '../store/useAuthStore'
 import { usePlayerStore } from '../store/usePlayerStore'
 import { useDialogStore } from '../store/useDialogStore'
+import { useOnboardingStore } from '../store/useOnboardingStore'
 import { api } from '../lib/api'
 
 export default function Navbar() {
@@ -69,6 +70,10 @@ export default function Navbar() {
     setQuery(e.target.value)
     setDropdownOpen(true)
     setSelectedIdx(-1)
+    // Onboarding: mark search action as complete when user types
+    if (e.target.value.trim().length >= 2) {
+      useOnboardingStore.getState().completeAction('search')
+    }
   }
 
   const handleFocus = () => {
@@ -86,6 +91,8 @@ export default function Navbar() {
   const handlePlay = (song) => {
     playSong(song, results)
     setDropdownOpen(false)
+    // Onboarding: mark play action complete
+    useOnboardingStore.getState().completeAction('play-song')
   }
 
   const handleKeyDown = (e) => {
@@ -147,7 +154,7 @@ export default function Navbar() {
       </div>
 
       {/* Center: Search */}
-      <div className="flex-1 max-w-[480px] mx-6 relative" ref={searchRef}>
+      <div className="flex-1 max-w-[480px] mx-6 relative" ref={searchRef} data-onboarding="search-input">
         <div className="flex items-center gap-2">
           <Link
             to="/"
@@ -181,7 +188,7 @@ export default function Navbar() {
 
         {/* Search Dropdown */}
         {dropdownOpen && (
-          <div className="absolute top-full left-[52px] right-0 mt-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-50 max-h-[420px] flex flex-col">
+          <div className="absolute top-full left-[52px] right-0 mt-2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden z-50 max-h-[420px] flex flex-col" data-onboarding="search-results">
             <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 text-zinc-600 text-xs">
               <div className="flex items-center gap-2">
                 <div className="flex gap-0.5">
@@ -249,6 +256,7 @@ export default function Navbar() {
           className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-sm font-bold text-black hover:scale-105 transition-transform ml-1 shadow-md"
           style={{ background: userProfile?.avatar_url ? 'transparent' : '#1ED45E' }}
           title="Conta"
+          data-onboarding="profile-button"
         >
           {userProfile?.avatar_url ? (
             <img src={userProfile.avatar_url} alt="" className="w-full h-full object-cover" />

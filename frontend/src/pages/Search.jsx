@@ -3,6 +3,7 @@ import { Search as SearchIcon, Play, Pause, ListMusic, Heart, Plus, Music } from
 import { api } from '../lib/api'
 import { usePlayerStore } from '../store/usePlayerStore'
 import { useLikeStore } from '../store/useLikeStore'
+import { useOnboardingStore } from '../store/useOnboardingStore'
 import PlayingBars from '../components/PlayingBars'
 import AddToPlaylistModal from '../components/AddToPlaylistModal'
 
@@ -33,6 +34,9 @@ export default function Search() {
 
   const handleSearch = (e) => {
     setSearchQuery(e.target.value)
+    if (e.target.value.trim().length >= 2) {
+      useOnboardingStore.getState().completeAction('search')
+    }
   }
 
   if (loading && !songs.length) {
@@ -59,12 +63,13 @@ export default function Search() {
         <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-900">
           <SearchIcon size={24} strokeWidth={2.5} />
         </div>
-        <input 
+        <input
           type="text"
           value={searchQuery}
           onChange={handleSearch}
           placeholder="O que você quer ouvir?"
           className="w-full bg-white text-zinc-900 py-3.5 pl-12 pr-4 rounded-md font-bold text-base placeholder:text-zinc-500 placeholder:font-bold outline-none border-none"
+          data-onboarding="search-input-mobile"
         />
       </div>
 
@@ -75,53 +80,56 @@ export default function Search() {
 
       {/* Songs Grid / List */}
       <div className="space-y-3">
-          {loading ? (
-            <div className="py-10 text-center animate-pulse text-zinc-500">Buscando músicas...</div>
-          ) : songs.length === 0 ? (
-            <div className="py-20 text-center flex flex-col items-center gap-4">
-               <Music size={48} className="text-zinc-800" />
-               <p className="text-zinc-500">Nenhum resultado para "{searchQuery}"</p>
-            </div>
-          ) : (
-            songs.map((song) => {
+        {loading ? (
+          <div className="py-10 text-center animate-pulse text-zinc-500">Buscando músicas...</div>
+        ) : songs.length === 0 ? (
+          <div className="py-20 text-center flex flex-col items-center gap-4">
+            <Music size={48} className="text-zinc-800" />
+            <p className="text-zinc-500">Nenhum resultado para "{searchQuery}"</p>
+          </div>
+        ) : (
+          songs.map((song, index) => {
             const isActive = currentSong?.id === song.id;
             return (
-              <div 
+              <div
                 key={song.id}
                 className="flex items-center gap-4 active:bg-white/5 p-2 rounded-md transition-colors group"
-                onClick={() => isActive ? togglePlay() : playSong(song, songs)}
+                data-onboarding={index === 0 ? "search-result-item" : undefined}
+                onClick={() => { isActive ? togglePlay() : playSong(song, songs); useOnboardingStore.getState().completeAction('play-song') }}
               >
                 <div className="relative w-14 h-14 rounded-[4px] overflow-hidden bg-zinc-800 shrink-0 shadow-md">
-                   {song.cover_url ? (
-                     <img src={song.cover_url} className="w-full h-full object-cover" alt="" />
-                   ) : (
-                      <div className="w-full h-full flex items-center justify-center text-zinc-600 text-sm">&#9835;</div>
-                   )}
-                   {isActive && isPlaying && (
-                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                        <PlayingBars isPlaying={true} height={16} />
-                     </div>
-                   )}
+                  {song.cover_url ? (
+                    <img src={song.cover_url} className="w-full h-full object-cover" alt="" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-zinc-600 text-sm">&#9835;</div>
+                  )}
+                  {isActive && isPlaying && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <PlayingBars isPlaying={true} height={16} />
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
-                   <h4 className={`text-base font-bold truncate tracking-tight ${isActive ? 'text-spotify-green' : 'text-white'}`}>
-                      {song.title}
-                   </h4>
-                   <p className="text-[13px] text-zinc-400 truncate leading-tight">{song.artist}</p>
+                  <h4 className={`text-base font-bold truncate tracking-tight ${isActive ? 'text-spotify-green' : 'text-white'}`}>
+                    {song.title}
+                  </h4>
+                  <p className="text-[13px] text-zinc-400 truncate leading-tight">{song.artist}</p>
                 </div>
                 <div className="flex items-center gap-6">
-                   <button 
-                     onClick={(e) => { e.stopPropagation(); toggleLike(song) }}
-                     className={`transition-all active:scale-125 ${isLiked(song.id) ? 'text-spotify-green' : 'text-zinc-500'}`}
-                   >
-                      <Heart size={22} fill={isLiked(song.id) ? "currentColor" : "none"} />
-                   </button>
-                   <button 
-                     onClick={(e) => { e.stopPropagation(); setPlaylistModalSong(song) }}
-                     className="text-zinc-500 hover:text-white transition-all active:scale-125"
-                   >
-                      <Plus size={22} />
-                   </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleLike(song); useOnboardingStore.getState().completeAction('like') }}
+                    className={`transition-all active:scale-125 ${isLiked(song.id) ? 'text-spotify-green' : 'text-zinc-500'}`}
+                    data-onboarding={index === 0 ? "like-button" : undefined}
+                  >
+                    <Heart size={22} fill={isLiked(song.id) ? "currentColor" : "none"} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setPlaylistModalSong(song); useOnboardingStore.getState().completeAction('add-to-playlist') }}
+                    className="text-zinc-500 hover:text-white transition-all active:scale-125"
+                    data-onboarding={index === 0 ? "add-to-playlist-btn" : undefined}
+                  >
+                    <Plus size={22} />
+                  </button>
                 </div>
               </div>
             );
@@ -130,9 +138,9 @@ export default function Search() {
       </div>
 
       {playlistModalSong && (
-        <AddToPlaylistModal 
-          song={playlistModalSong} 
-          onClose={() => setPlaylistModalSong(null)} 
+        <AddToPlaylistModal
+          song={playlistModalSong}
+          onClose={() => setPlaylistModalSong(null)}
         />
       )}
     </div>

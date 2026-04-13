@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react'
-import { Camera, Check, ArrowLeft } from 'lucide-react'
+import { Camera, Check, ArrowLeft, RotateCcw } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/useAuthStore'
 import { useDialogStore } from '../store/useDialogStore'
+import { useOnboardingStore } from '../store/useOnboardingStore'
 import { supabase } from '../lib/supabase'
 import { api } from '../lib/api'
 
@@ -181,6 +182,18 @@ export default function Profile() {
           'Salvar alterações'
         )}
       </button>
+
+      {/* Tutorial */}
+      <div className="mt-10 pt-8 border-t border-zinc-900">
+        <p className="text-xs text-zinc-600 uppercase tracking-wider font-medium mb-3">Tutorial</p>
+        <button
+          onClick={() => { useOnboardingStore.getState().restart(); navigate('/') }}
+          className="flex items-center gap-2 text-spotify-green text-sm hover:opacity-80 transition font-medium"
+        >
+          <RotateCcw size={14} />
+          Rever tutorial de onboarding
+        </button>
+      </div>
 
       {/* Danger zone */}
       <div className="mt-12 pt-8 border-t border-zinc-900">

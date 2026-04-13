@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useAuthStore } from './store/useAuthStore'
 import { useLikeStore } from './store/useLikeStore'
 import { useDialogStore } from './store/useDialogStore'
+import { useOnboardingStore } from './store/useOnboardingStore'
 import MainLayout from './layouts/MainLayout'
 import Home from './pages/Home'
 import Login from './pages/Login'
@@ -17,25 +18,25 @@ import Dialog from './components/Dialog'
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { session, userProfile, isLoading } = useAuthStore()
-  
+
   if (isLoading) return null // MainLayout skeleton will show via AppSkeleton
-  
+
   if (!session) return <Navigate to="/login" replace />
-  
+
   if (adminOnly && userProfile?.role !== 'admin') {
     return <Navigate to="/" replace />
   }
-  
+
   return children
 }
 
 function PublicRoute({ children }) {
   const { session, isLoading } = useAuthStore()
-  
+
   if (isLoading) return null
-  
+
   if (session) return <Navigate to="/" replace />
-  
+
   return children
 }
 
@@ -57,8 +58,8 @@ function AppSkeleton() {
 
       {/* Mobile Header Skeleton */}
       <div className="lg:hidden h-16 flex items-center px-4 justify-between">
-         <div className="h-7 w-24 skeleton" />
-         <div className="h-8 w-8 rounded-full skeleton" />
+        <div className="h-7 w-24 skeleton" />
+        <div className="h-8 w-8 rounded-full skeleton" />
       </div>
 
       {/* Body */}
@@ -98,7 +99,7 @@ function AppSkeleton() {
 
           <div className="space-y-8">
             <div className="h-7 w-48 skeleton mb-5" />
-            
+
             {/* Grid for desktop, Scroll for mobile */}
             <div className="hidden lg:grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
               {[...Array(5)].map((_, i) => (
@@ -146,9 +147,9 @@ function AppSkeleton() {
 
       {/* Mobile Nav Placeholder */}
       <div className="lg:hidden h-16 shrink-0 bg-black/90 flex items-center justify-around px-4 border-t border-white/5">
-         {[...Array(4)].map((_, i) => (
-            <div key={i} className="w-8 h-8 rounded skeleton" />
-         ))}
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="w-8 h-8 rounded skeleton" />
+        ))}
       </div>
     </div>
   )
@@ -174,6 +175,11 @@ export default function App() {
           { title: 'Aviso de Responsabilidade', icon: 'info' }
         ).then(() => {
           localStorage.setItem('yoursound_disclaimer_seen', 'true')
+          // Iniciar onboarding após o disclaimer no primeiro login
+          const { isCompleted, isActive } = useOnboardingStore.getState()
+          if (!isCompleted && !isActive) {
+            setTimeout(() => useOnboardingStore.getState().start(), 500)
+          }
         })
       }
     }
@@ -185,27 +191,27 @@ export default function App() {
 
   return (
     <>
-    <Dialog />
-    <Router>
-      <Routes>
-        <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-        
-        <Route path="/" element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
-          <Route index element={<Home />} />
-          <Route path="upload" element={<Upload />} />
-          <Route path="search" element={<Search />} />
-          <Route path="liked" element={<LikedSongs />} />
-          <Route path="playlists" element={<Playlists />} />
-          <Route path="playlists/:id" element={<PlaylistDetails />} />
-          <Route path="profile" element={<Profile />} />
-          <Route path="admin" element={
-            <ProtectedRoute adminOnly={true}>
-              <Admin />
-            </ProtectedRoute>
-          } />
-        </Route>
-      </Routes>
-    </Router>
+      <Dialog />
+      <Router>
+        <Routes>
+          <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+
+          <Route path="/" element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
+            <Route index element={<Home />} />
+            <Route path="upload" element={<Upload />} />
+            <Route path="search" element={<Search />} />
+            <Route path="liked" element={<LikedSongs />} />
+            <Route path="playlists" element={<Playlists />} />
+            <Route path="playlists/:id" element={<PlaylistDetails />} />
+            <Route path="profile" element={<Profile />} />
+            <Route path="admin" element={
+              <ProtectedRoute adminOnly={true}>
+                <Admin />
+              </ProtectedRoute>
+            } />
+          </Route>
+        </Routes>
+      </Router>
     </>
   )
 }

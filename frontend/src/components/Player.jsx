@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { usePlayerStore } from '../store/usePlayerStore'
 import { useLikeStore } from '../store/useLikeStore'
+import { useOnboardingStore } from '../store/useOnboardingStore'
 import { audioManager } from '../lib/audioRef'
 import { 
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, 
@@ -248,7 +249,7 @@ export default function Player({ isMobile = false }) {
         </div>
 
         <div className="flex items-center gap-4 px-1 shrink-0">
-          <button onClick={(e) => { e.stopPropagation(); toggleLike(currentSong.id) }} className={`transition-colors ${isLiked(currentSong.id) ? 'text-spotify-green' : 'text-zinc-400'}`}>
+          <button onClick={(e) => { e.stopPropagation(); toggleLike(currentSong.id); useOnboardingStore.getState().completeAction('like') }} data-onboarding="like-button" className={`transition-colors ${isLiked(currentSong.id) ? 'text-spotify-green' : 'text-zinc-400'}`}>
             <Heart size={22} fill={isLiked(currentSong.id) ? 'currentColor' : 'none'} />
           </button>
           <button onClick={(e) => { e.stopPropagation(); togglePlay() }} className="text-white">
@@ -379,7 +380,7 @@ export default function Player({ isMobile = false }) {
           <span className="text-sm font-medium text-white hover:underline cursor-pointer truncate">{currentSong.title}</span>
           <span className="text-[12px] text-[#b3b3b3] hover:text-white hover:underline cursor-pointer truncate tracking-wide mt-0.5">{currentSong.artist}</span>
         </div>
-        <button onClick={() => setAddModalOpen(true)} className="hidden sm:block hover:scale-105 transition-transform shrink-0 text-[#b3b3b3] hover:text-white ml-2"><PlusCircle size={16} strokeWidth={1.5} /></button>
+        <button onClick={() => { setAddModalOpen(true); useOnboardingStore.getState().completeAction('add-to-playlist') }} data-onboarding="add-to-playlist-btn" className="hidden sm:block hover:scale-105 transition-transform shrink-0 text-[#b3b3b3] hover:text-white ml-2"><PlusCircle size={16} strokeWidth={1.5} /></button>
       </div>
 
       {addModalOpen && <AddToPlaylistModal song={currentSong} onClose={() => setAddModalOpen(false)} />}
