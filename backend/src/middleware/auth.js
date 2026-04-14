@@ -14,14 +14,16 @@ const verifyAuth = async (req, res, next) => {
       return res.status(503).json({ error: 'Serviço indisponível — configuração do Supabase ausente.' });
     }
 
+    let token;
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token de autenticação ausente.' });
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    } else if (req.query.token) {
+      token = req.query.token;
     }
 
-    const token = authHeader.split(' ')[1];
     if (!token || token.length < 10) {
-      return res.status(401).json({ error: 'Token inválido.' });
+      return res.status(401).json({ error: 'Token inválido ou ausente.' });
     }
 
     // Validate the token against Supabase Auth — this is the ONLY trustworthy source

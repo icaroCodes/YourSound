@@ -11,8 +11,10 @@ import {
 } from 'lucide-react'
 import AddToPlaylistModal from './AddToPlaylistModal'
 import { useDialogStore } from '../store/useDialogStore'
+import { useAuthStore } from '../store/useAuthStore'
 
 export default function Player({ isMobile = false }) {
+  const token = useAuthStore(state => state.session?.access_token)
   const { 
     currentSong, isPlaying, togglePlay, next, previous, 
     volume, setVolume, queue, isQueueOpen, toggleQueue, 
@@ -34,6 +36,16 @@ export default function Player({ isMobile = false }) {
   const [previousVolume, setPreviousVolume] = useState(1)
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [isMobileFullScreen, setIsMobileFullScreen] = useState(false)
+
+  const getAudioUrl = (url) => {
+    if (!url) return ''
+    if (url.match(/youtube\.com\/|youtu\.be\/|tiktok\.com\//)) {
+      const apiBase = import.meta.env.VITE_API_URL || ''
+      return `${apiBase}/api/songs/proxy-stream?url=${encodeURIComponent(url)}&type=audio&token=${token || ''}`
+    }
+    return url
+  }
+  const audioUrl = currentSong ? getAudioUrl(currentSong.file_url) : ''
 
   // Share audio element for direct access (Lyrics, etc.)
   useEffect(() => {
@@ -233,7 +245,7 @@ export default function Player({ isMobile = false }) {
         onClick={() => setIsMobileFullScreen(true)}
       >
         <audio
-          ref={audioRef} src={currentSong.file_url}
+          ref={audioRef} src={audioUrl}
           onLoadedData={handleLoadedData} onTimeUpdate={handleTimeUpdate}
           onEnded={() => repeatMode === 'one' ? (audioRef.current.currentTime = 0, audioRef.current.play()) : next()}
           autoPlay={isPlaying}
@@ -272,7 +284,7 @@ export default function Player({ isMobile = false }) {
         style={{ paddingBottom: 'calc(2.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
         <audio
-          ref={audioRef} src={currentSong.file_url}
+          ref={audioRef} src={audioUrl}
           onLoadedData={handleLoadedData} onTimeUpdate={handleTimeUpdate}
           onEnded={() => repeatMode === 'one' ? (audioRef.current.currentTime = 0, audioRef.current.play()) : next()}
           autoPlay={isPlaying}
@@ -367,7 +379,7 @@ export default function Player({ isMobile = false }) {
   return (
     <div className="w-full h-full flex items-center justify-between px-4">
       <audio
-        ref={audioRef} src={currentSong.file_url}
+        ref={audioRef} src={audioUrl}
         onLoadedData={handleLoadedData} onTimeUpdate={handleTimeUpdate}
         onEnded={() => repeatMode === 'one' ? (audioRef.current.currentTime = 0, audioRef.current.play()) : next()}
         autoPlay={isPlaying}

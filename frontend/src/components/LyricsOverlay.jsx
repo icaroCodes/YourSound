@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { usePlayerStore } from '../store/usePlayerStore'
+import { useAuthStore } from '../store/useAuthStore'
 import { audioManager } from '../lib/audioRef'
 import { fetchLyrics } from '../lib/lyrics'
 import { X, Mic2 } from 'lucide-react'
@@ -93,6 +94,7 @@ export default function LyricsOverlay() {
   }, [currentSong?.id, currentSong?.subtitle_mode])
 
   // ── 2. Set video URL (proxy supports range requests, browser can seek natively) ──
+  const token = useAuthStore(state => state.session?.access_token)
   useEffect(() => {
     if (!isVideoMode || !videoUrl) {
       setVideoBlobUrl(null)
@@ -103,8 +105,12 @@ export default function LyricsOverlay() {
 
     setVideoLoading(true)
     setVideoError(false)
-    setVideoBlobUrl(`${API_BASE}/api/songs/proxy-stream?url=${encodeURIComponent(videoUrl)}&type=video`)
-  }, [isVideoMode, videoUrl])
+    if (videoUrl.match(/youtube\.com\/|youtu\.be\/|tiktok\.com\//)) {
+      setVideoBlobUrl(`${API_BASE}/api/songs/proxy-stream?url=${encodeURIComponent(videoUrl)}&type=video&token=${token || ''}`)
+    } else {
+      setVideoBlobUrl(videoUrl)
+    }
+  }, [isVideoMode, videoUrl, token])
 
   // ── 3. Audio ↔ Video sync via RAF + event listeners ──
   useEffect(() => {
@@ -317,9 +323,8 @@ export default function LyricsOverlay() {
               playsInline
               preload="auto"
               className="w-full h-full object-cover transition-opacity duration-700"
-              style={{ opacity: 0 }}
-              onLoadedData={(e) => { 
-                e.target.style.opacity = '0.6'; 
+              style={{ opacity: videoLoading ? 0 : 1 }}
+              onLoadedData={() => { 
                 setVideoLoading(false); 
                 setVideoError(false);
               }}

@@ -14,6 +14,9 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
   const [url, setUrl] = useState('')
   const [isPublic, setIsPublic] = useState(false)
   const [subtitleMode, setSubtitleMode] = useState('none') // 'none', 'manual', 'video'
+  const [subtitleVideoType, setSubtitleVideoType] = useState('link')
+  const [subtitleLinkMode, setSubtitleLinkMode] = useState('stream')
+  const [subtitleVideoFile, setSubtitleVideoFile] = useState(null)
   const [subtitleData, setSubtitleData] = useState([])
   const [subtitleVideoUrl, setSubtitleVideoUrl] = useState('')
   const [manualText, setManualText] = useState('')
@@ -30,11 +33,14 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
         setTitle('')
         setArtist('')
         setUrl('')
-        setFile(null)
         setIsPublic(false)
         setSubtitleMode('none')
         setSubtitleData([])
         setSubtitleVideoUrl('')
+        setSubtitleVideoUrl('')
+        setSubtitleVideoFile(null)
+        setSubtitleVideoType('link')
+        setSubtitleLinkMode('stream')
         setManualText('')
         setCoverFile(null)
         setCoverPreview(null)
@@ -55,7 +61,9 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
         coverFile,
         subtitleMode,
         subtitleData: subtitleMode === 'manual' ? subtitleData : null,
-        subtitleVideoUrl: subtitleMode === 'video' ? subtitleVideoUrl : null
+        subtitleVideoUrl: subtitleMode === 'video' && subtitleVideoType === 'link' ? subtitleVideoUrl : null,
+        subtitleVideoFile: subtitleMode === 'video' && subtitleVideoType === 'file' ? subtitleVideoFile : null,
+        subtitleLinkMode: subtitleMode === 'video' && subtitleVideoType === 'link' ? subtitleLinkMode : null
       }
 
       if (mode === 'link') {
@@ -141,16 +149,19 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
 
                 <div className="space-y-4">
                   {mode === 'link' && (
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-zinc-500 uppercase ml-1 tracking-widest">URL do Vídeo</label>
-                      <input 
-                        type="url"
-                        value={url}
-                        onChange={e => setUrl(e.target.value)}
-                        placeholder="YouTube ou TikTok"
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-spotify-green outline-none"
-                        required
-                      />
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-zinc-500 uppercase ml-1 tracking-widest">URL do Vídeo</label>
+                        <input 
+                          type="url"
+                          value={url}
+                          onChange={e => setUrl(e.target.value)}
+                          placeholder="YouTube ou TikTok"
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-spotify-green outline-none"
+                          required
+                        />
+                      </div>
+                      <p className="text-[10px] text-zinc-500 mt-1">O áudio será baixado e armazenado automaticamente.</p>
                     </div>
                   )}
 
@@ -273,13 +284,82 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
                     )}
 
                     {subtitleMode === 'video' && (
-                      <input
-                        type="url"
-                        value={subtitleVideoUrl}
-                        onChange={e => setSubtitleVideoUrl(e.target.value)}
-                        placeholder="Link YT/TikTok para legendas"
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-spotify-green outline-none"
-                      />
+                      <div className="space-y-3">
+                        <div className="flex bg-white/5 rounded-xl p-1 border border-white/10">
+                          <button
+                            type="button"
+                            onClick={() => setSubtitleVideoType('link')}
+                            className={`flex-1 py-1.5 rounded-lg text-[10px] uppercase tracking-wider font-bold transition-all ${
+                              subtitleVideoType === 'link' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white'
+                            }`}
+                          >
+                            Link
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSubtitleVideoType('file')}
+                            className={`flex-1 py-1.5 rounded-lg text-[10px] uppercase tracking-wider font-bold transition-all ${
+                              subtitleVideoType === 'file' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white'
+                            }`}
+                          >
+                            Arquivo
+                          </button>
+                        </div>
+                        
+                        {subtitleVideoType === 'link' ? (
+                          <div className="space-y-2">
+                            <input
+                              type="url"
+                              value={subtitleVideoUrl}
+                              onChange={e => setSubtitleVideoUrl(e.target.value)}
+                              placeholder="URL do YouTube ou TikTok"
+                              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-spotify-green outline-none"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setSubtitleLinkMode('stream')}
+                                className={`flex-1 py-2 rounded-lg text-[11px] font-bold border transition-colors ${
+                                  subtitleLinkMode === 'stream' 
+                                    ? 'bg-spotify-green/10 text-spotify-green border-spotify-green/30' 
+                                    : 'bg-white/5 text-zinc-400 border-white/5'
+                                }`}
+                              >
+                                Link Rápido
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSubtitleLinkMode('download')}
+                                className={`flex-1 py-2 rounded-lg text-[11px] font-bold border transition-colors ${
+                                  subtitleLinkMode === 'download' 
+                                    ? 'bg-spotify-green/10 text-spotify-green border-spotify-green/30' 
+                                    : 'bg-white/5 text-zinc-400 border-white/5'
+                                }`}
+                              >
+                                Baixar MP4
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <input
+                              type="file" accept="video/*" className="hidden" id="mobile-subtitle-video-input"
+                              onChange={e => setSubtitleVideoFile(e.target.files[0])}
+                            />
+                            <label 
+                              htmlFor="mobile-subtitle-video-input"
+                              className="flex items-center gap-4 bg-white/5 border border-white/10 rounded-xl px-4 py-3 cursor-pointer"
+                            >
+                              <div className="w-10 h-10 rounded bg-zinc-800 flex items-center justify-center shrink-0">
+                                <Video size={18} className="text-zinc-600" />
+                              </div>
+                              <span className="text-xs font-bold text-zinc-400 truncate flex-1 min-w-0">
+                                {subtitleVideoFile ? subtitleVideoFile.name : 'Escolher vídeo (MP4)'}
+                              </span>
+                            </label>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
 

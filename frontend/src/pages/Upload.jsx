@@ -66,12 +66,16 @@ export default function Upload() {
   const [message, setMessage] = useState({ type: '', text: '' })
   
   const [subtitleMode, setSubtitleMode] = useState('none') // 'none', 'manual', 'video'
+  const [subtitleVideoType, setSubtitleVideoType] = useState('link') // 'link', 'file'
+  const [subtitleLinkMode, setSubtitleLinkMode] = useState('stream') // 'stream', 'download'
   const [subtitleData, setSubtitleData] = useState([])
   const [subtitleVideoUrl, setSubtitleVideoUrl] = useState('')
+  const [subtitleVideoFile, setSubtitleVideoFile] = useState(null)
   const [manualText, setManualText] = useState('')
 
   const audioInputRef = useRef(null)
   const coverInputRef = useRef(null)
+  const subtitleVideoInputRef = useRef(null)
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -124,7 +128,9 @@ export default function Upload() {
         title, artist, isPublic, coverFile,
         subtitleMode,
         subtitleData: subtitleMode === 'manual' ? subtitleData : null,
-        subtitleVideoUrl: subtitleMode === 'video' ? subtitleVideoUrl : null
+        subtitleVideoUrl: subtitleMode === 'video' && subtitleVideoType === 'link' ? subtitleVideoUrl : null,
+        subtitleVideoFile: subtitleMode === 'video' && subtitleVideoType === 'file' ? subtitleVideoFile : null,
+        subtitleLinkMode: subtitleMode === 'video' && subtitleVideoType === 'link' ? subtitleLinkMode : null
       }
       const result = useLink
         ? await api.uploadSongFromLink({ ...payload, url: linkUrl })
@@ -134,8 +140,10 @@ export default function Upload() {
       setTitle(''); setArtist(''); setIsPublic(false)
       setAudioFile(null); setCoverFile(null); setCoverPreview(null); setLinkUrl('')
       setSubtitleMode('none'); setSubtitleData([]); setSubtitleVideoUrl(''); setManualText('')
+      setSubtitleVideoFile(null); setSubtitleVideoType('link'); setSubtitleLinkMode('stream')
       if (audioInputRef.current) audioInputRef.current.value = ''
       if (coverInputRef.current) coverInputRef.current.value = ''
+      if (subtitleVideoInputRef.current) subtitleVideoInputRef.current.value = ''
     } catch (err) {
       setMessage({ type: 'error', text: err.message })
     } finally {
@@ -251,7 +259,7 @@ export default function Upload() {
                 <label className="block text-[11px] uppercase tracking-widest font-semibold text-zinc-500 mb-2 px-0.5">
                   URL do Vídeo
                 </label>
-                <div className="relative">
+                <div className="relative mb-3">
                   <Link2 size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none" />
                   <input
                     type="url" required value={linkUrl}
@@ -262,6 +270,7 @@ export default function Upload() {
                     placeholder="https://youtube.com/watch?v=... ou TikTok"
                   />
                 </div>
+                <p className="text-[11px] text-zinc-600 mt-1 px-1">O áudio será baixado e armazenado automaticamente.</p>
               </motion.div>
             ) : (
               <motion.div key="file" variants={fadeIn} initial="hidden" animate="show" exit="exit">
@@ -388,17 +397,83 @@ export default function Upload() {
               )}
 
               {subtitleMode === 'video' && (
-                <motion.div key="video" variants={fadeIn} initial="hidden" animate="show" exit="exit">
-                  <div className="relative">
-                    <Video size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" />
-                    <input
-                      type="url"
-                      value={subtitleVideoUrl}
-                      onChange={e => setSubtitleVideoUrl(e.target.value)}
-                      placeholder="URL do YouTube ou TikTok"
-                      className="w-full pl-10 pr-4 py-3.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-red-500 transition-all"
-                    />
+                <motion.div key="video" variants={fadeIn} initial="hidden" animate="show" exit="exit" className="space-y-3">
+                  <div className="flex bg-zinc-950 rounded-xl p-1 border border-zinc-800">
+                    <button
+                      type="button"
+                      onClick={() => setSubtitleVideoType('link')}
+                      className={`flex-1 py-1.5 rounded-lg text-[10px] uppercase tracking-wider font-bold transition-all ${
+                        subtitleVideoType === 'link' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      Apenas Link
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSubtitleVideoType('file')}
+                      className={`flex-1 py-1.5 rounded-lg text-[10px] uppercase tracking-wider font-bold transition-all ${
+                        subtitleVideoType === 'file' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      Enviar Arquivo
+                    </button>
                   </div>
+
+                  {subtitleVideoType === 'link' ? (
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <Video size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" />
+                        <input
+                          type="url"
+                          value={subtitleVideoUrl}
+                          onChange={e => setSubtitleVideoUrl(e.target.value)}
+                          placeholder="URL do YouTube ou TikTok"
+                          className="w-full pl-10 pr-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-red-500 transition-all"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSubtitleLinkMode('stream')}
+                          className={`flex-1 py-2 rounded-lg text-[11px] font-bold border transition-colors ${
+                            subtitleLinkMode === 'stream' 
+                              ? 'bg-red-500/10 text-red-500 border-red-500/30' 
+                              : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-white'
+                          }`}
+                        >
+                          Apenas Link (Rápido)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSubtitleLinkMode('download')}
+                          className={`flex-1 py-2 rounded-lg text-[11px] font-bold border transition-colors ${
+                            subtitleLinkMode === 'download' 
+                              ? 'bg-red-500/10 text-red-500 border-red-500/30' 
+                              : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-white'
+                          }`}
+                        >
+                          Baixar MP4 (Seguro)
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <input
+                        ref={subtitleVideoInputRef}
+                        type="file" accept="video/*" className="hidden"
+                        onChange={e => setSubtitleVideoFile(e.target.files[0])}
+                      />
+                      <div
+                        onClick={() => subtitleVideoInputRef.current?.click()}
+                        className="flex flex-col items-center justify-center gap-2 w-full py-4 border border-dashed border-zinc-700 bg-zinc-900/50 hover:bg-zinc-900 rounded-xl cursor-pointer transition-colors"
+                      >
+                        <UploadIcon size={20} className={subtitleVideoFile ? 'text-red-500' : 'text-zinc-500'} />
+                        <p className={`text-xs font-medium max-w-[200px] truncate ${subtitleVideoFile ? 'text-white' : 'text-zinc-400'}`}>
+                          {subtitleVideoFile ? subtitleVideoFile.name : 'Selecionar arquivo de vídeo'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               )}
 

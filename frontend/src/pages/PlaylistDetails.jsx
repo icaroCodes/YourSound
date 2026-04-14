@@ -30,19 +30,14 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
-// ── Helpers para persistir a ordem no localStorage ──────────────
-function saveOrder(playlistId, ids) {
-  try { localStorage.setItem(`ys_pl_order_${playlistId}`, JSON.stringify(ids)) } catch {}
-}
-function loadOrder(playlistId) {
-  try { return JSON.parse(localStorage.getItem(`ys_pl_order_${playlistId}`)) || null } catch { return null }
-}
-function applyOrder(songs, savedIds) {
-  if (!savedIds) return songs
-  const map = Object.fromEntries(songs.map(s => [s.playlist_song_id, s]))
-  const ordered = savedIds.map(id => map[id]).filter(Boolean)
-  const rest = songs.filter(s => !savedIds.includes(s.playlist_song_id))
-  return [...ordered, ...rest]
+// ── Salva ordem no banco de dados ────────────────────────────────
+async function persistOrder(playlistId, songs) {
+  try {
+    const orderedIds = songs.map(s => s.playlist_song_id)
+    await api.reorderPlaylistSongs(playlistId, orderedIds)
+  } catch (e) {
+    console.error('[PlaylistDetails] Failed to persist order:', e.message)
+  }
 }
 
 // ── Sortable Row Component ───────────────────────────────────────
@@ -272,7 +267,7 @@ export default function PlaylistDetails() {
       const oldIdx = prev.findIndex(s => s.playlist_song_id === active.id)
       const newIdx = prev.findIndex(s => s.playlist_song_id === over.id)
       const next = arrayMove(prev, oldIdx, newIdx)
-      saveOrder(id, next.map(s => s.playlist_song_id))
+      persistOrder(id, next)
       syncQueue(next)
       useOnboardingStore.getState().completeAction('reorder')
       return next
@@ -324,7 +319,7 @@ export default function PlaylistDetails() {
       setError(null)
       const data = await api.getPlaylist(id)
       setPlaylist(data.playlist)
-      setSongs(applyOrder(data.songs, loadOrder(id)))
+      setSongs(data.songs) // order comes from the DB (position column)
     } catch (err) {
       setError(err.message || 'Erro ao carregar playlist.')
     } finally {
@@ -445,7 +440,6 @@ export default function PlaylistDetails() {
       const newSong = { ...song, playlist_song_id: data.id, added_at: new Date().toISOString() }
       const next = [...songs, newSong]
       setSongs(next)
-      saveOrder(id, next.map(s => s.playlist_song_id))
       syncQueue(next)
       // Remove from both results and available pool so it doesn't reappear
       setSearchResults(prev => prev.filter(s => s.id !== song.id))
@@ -460,7 +454,6 @@ export default function PlaylistDetails() {
       await api.removeSongFromPlaylist(id, playlistSongId)
       const next = songs.filter(s => s.playlist_song_id !== playlistSongId)
       setSongs(next)
-      saveOrder(id, next.map(s => s.playlist_song_id))
       syncQueue(next)
     } catch (err) {
       console.error(err)

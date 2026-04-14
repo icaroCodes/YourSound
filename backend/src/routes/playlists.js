@@ -59,12 +59,12 @@ router.get('/:id', verifyAuth, async (req, res) => {
       return res.status(403).json({ error: 'Acesso negado a esta playlist.' });
     }
 
-    // Fetch playlist_songs entries (manual join — no FK dependency)
+    // Fetch playlist_songs entries ordered by position (drag-and-drop order)
     const { data: psEntries, error: psErr } = await supabase
       .from('playlist_songs')
-      .select('id, song_id, created_at')
+      .select('id, song_id, created_at, position')
       .eq('playlist_id', playlistId)
-      .order('id', { ascending: false });
+      .order('position', { ascending: true });
 
     if (psErr) throw psErr;
 
@@ -284,9 +284,20 @@ router.post('/:id/songs', verifyAuth, async (req, res) => {
       return res.status(409).json({ error: 'Esta música já está na playlist.' });
     }
 
+    // Determine next position (add to end of playlist)
+    const { data: maxRow } = await supabase
+      .from('playlist_songs')
+      .select('position')
+      .eq('playlist_id', playlistId)
+      .order('position', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const nextPosition = maxRow ? maxRow.position + 1 : 0;
+
     const { data, error } = await supabase
       .from('playlist_songs')
-      .insert({ playlist_id: playlistId, song_id: songId })
+      .insert({ playlist_id: playlistId, song_id: songId, position: nextPosition })
       .select()
       .single();
 
@@ -295,6 +306,58 @@ router.post('/:id/songs', verifyAuth, async (req, res) => {
   } catch (err) {
     console.error('[POST /playlists/:id/songs]', err.message);
     res.status(500).json({ error: 'Erro ao adicionar música.' });
+  }
+});
+
+/**
+ * PATCH /api/playlists/:id/songs/reorder
+ * Saves the new drag-and-drop order for playlist songs.
+ * Body: { orderedIds: string[] }  — array of playlist_song entry IDs in new order.
+ * SECURITY: Validates ownership; only touches entries belonging to this playlist.
+ */
+router.patch('/:id/songs/reorder', verifyAuth, async (req, res) => {
+  try {
+    const playlistId = req.params.id;
+    if (!isValidUUID(playlistId)) {
+      return res.status(400).json({ error: 'ID de playlist inválido.' });
+    }
+
+    const { orderedIds } = req.body;
+    if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+      return res.status(400).json({ error: 'orderedIds é obrigatório.' });
+    }
+
+    // Verify ownership
+    const { data: playlist, error: plErr } = await supabase
+      .from('playlists')
+      .select('user_id')
+      .eq('id', playlistId)
+      .single();
+
+    if (plErr || !playlist) {
+      return res.status(404).json({ error: 'Playlist não encontrada.' });
+    }
+
+    if (playlist.user_id !== req.userId) {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    // Update each row's position in bulk using individual updates
+    // (Supabase JS doesn't support bulk update with different values per row without rpc)
+    const updates = orderedIds.map((entryId, index) =>
+      supabase
+        .from('playlist_songs')
+        .update({ position: index })
+        .eq('id', entryId)
+        .eq('playlist_id', playlistId) // extra safety: only update entries of this playlist
+    );
+
+    await Promise.all(updates);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[PATCH /playlists/:id/songs/reorder]', err.message);
+    res.status(500).json({ error: 'Erro ao salvar ordem.' });
   }
 });
 

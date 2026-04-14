@@ -207,7 +207,8 @@ router.post(
   verifyAuth,
   upload.fields([
     { name: 'audio', maxCount: 1 },
-    { name: 'cover', maxCount: 1 }
+    { name: 'cover', maxCount: 1 },
+    { name: 'subtitle_video', maxCount: 1 }
   ]),
   async (req, res) => {
     try {
@@ -215,7 +216,7 @@ router.post(
       const artist = sanitizeString(req.body.artist, 100);
       const isPublic = req.body.is_public === 'true';
       const subtitleMode = req.body.subtitle_mode || 'none';
-      const subtitleVideoUrl = req.body.subtitle_video_url || null;
+      let subtitleVideoUrl = req.body.subtitle_video_url || null;
       let subtitleData = null;
 
       try {
@@ -301,6 +302,66 @@ router.post(
         coverUrl = cUrl;
       }
 
+      // --- Upload Subtitle Video File (optional) ---
+      if (req.files?.subtitle_video?.[0]) {
+        const videoFile = req.files.subtitle_video[0];
+        if (videoFile.size > 50 * 1024 * 1024) {
+          return res.status(400).json({ error: 'Vídeo de legenda excede 50MB.' });
+        }
+        
+        const cleanVideoName = videoFile.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '');
+        const videoPath = `${req.userId}/${Date.now()}_${cleanVideoName}`;
+
+        const { error: videoUploadError } = await supabase.storage
+          .from('songs') // Resusing the songs bucket, or create a 'videos' bucket. Letting it go to songs.
+          .upload(videoPath, videoFile.buffer, {
+            contentType: videoFile.mimetype,
+            upsert: false
+          });
+
+        if (videoUploadError) throw new Error(`Storage video error: ${videoUploadError.message}`);
+
+        const { data: { publicUrl: vUrl } } = supabase.storage
+          .from('songs')
+          .getPublicUrl(videoPath);
+        
+        subtitleVideoUrl = vUrl;
+      } else if (subtitleMode === 'video' && req.body.subtitle_link_mode === 'download' && subtitleVideoUrl) {
+        // --- Download Subtitle Video Linked via yt-dlp ---
+        try {
+          const tmpVidId = `${req.userId}_vid_${Date.now()}`;
+          const rawVidPath = path.join(os.tmpdir(), `${tmpVidId}.mp4`);
+
+          console.log('[UPLOAD] Download subtitle video via yt-dlp...');
+          await runYtdlp([
+            '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            '-o', rawVidPath,
+            '--no-playlist',
+            '--force-ipv4',
+            '--no-warnings',
+            '--max-filesize', '50M',
+            '--', subtitleVideoUrl,
+          ], 60000);
+
+          if (fs.existsSync(rawVidPath)) {
+            console.log('[UPLOAD] Subtitle video downloaded, uploading to Supabase...');
+            const vidBuffer = fs.readFileSync(rawVidPath);
+            const videoStoragePath = `${req.userId}/${Date.now()}_subtitle.mp4`;
+            
+            await supabase.storage.from('songs').upload(videoStoragePath, vidBuffer, {
+              contentType: 'video/mp4',
+              upsert: false
+            });
+
+            const { data: { publicUrl: storedVidUrl } } = supabase.storage.from('songs').getPublicUrl(videoStoragePath);
+            subtitleVideoUrl = storedVidUrl;
+            fs.unlinkSync(rawVidPath); // cleanup
+          }
+        } catch(err) {
+          console.error('[UPLOAD] Failed to download subtitle video.', err.message);
+        }
+      }
+
       // --- Extract duration ---
       const duration = await getDuration(audioFile.buffer, audioFile.mimetype);
 
@@ -354,7 +415,10 @@ router.post(
 router.post(
   '/from-link',
   verifyAuth,
-  upload.fields([{ name: 'cover', maxCount: 1 }]),
+  upload.fields([
+    { name: 'cover', maxCount: 1 },
+    { name: 'subtitle_video', maxCount: 1 }
+  ]),
   async (req, res) => {
     // Hard timeout — guarantee a response within 90s no matter what
     const ROUTE_TIMEOUT = 90000;
@@ -383,7 +447,8 @@ router.post(
       const isPublic = req.body.is_public === 'true';
       const url = req.body.url;
       const subtitleMode = req.body.subtitle_mode || 'none';
-      const subtitleVideoUrl = req.body.subtitle_video_url || null;
+      let subtitleVideoUrl = req.body.subtitle_video_url || null;
+      const subtitleLinkMode = req.body.subtitle_link_mode || 'stream';
       let subtitleData = null;
 
       try {
@@ -408,7 +473,12 @@ router.post(
 
       console.log(`[FROM-LINK] URL: ${url}`);
 
+      let audioUrl = null;
+      let duration = null;
+
       // ── Step 1: yt-dlp downloads best audio ──
+      // Always download and store — raw YouTube/TikTok URLs cannot be played
+      // directly by <audio> tags and proxy-stream is unreliable in production.
       const tmpId = `${req.userId}_${Date.now()}`;
       const rawPath = path.join(os.tmpdir(), `${tmpId}_raw`);
       const mp3Path = path.join(os.tmpdir(), `${tmpId}.mp3`);
@@ -422,7 +492,7 @@ router.post(
         '--force-ipv4',
         '--no-warnings',
         '--max-filesize', '15M',
-        '--', url,  // '--' prevents url from being interpreted as a flag
+        '--', url,
       ], 45000);
       console.log('[FROM-LINK] Step 1 done.');
 
@@ -467,7 +537,7 @@ router.post(
         return safeJson(400, { error: 'O áudio é maior que 15MB. Tente um vídeo mais curto.' });
       }
 
-      const duration = await getDuration(audioBuffer, 'audio/mpeg');
+      duration = await getDuration(audioBuffer, 'audio/mpeg');
 
       // ── Step 3: Upload to Supabase Storage ──
       console.log('[FROM-LINK] Step 3: Supabase upload...');
@@ -482,10 +552,13 @@ router.post(
 
       if (uploadError) throw new Error(`Erro no Storage: ${uploadError.message}`);
 
-      const { data: { publicUrl: audioUrl } } = supabase.storage
+      const { data: { publicUrl: storedUrl } } = supabase.storage
         .from('songs')
         .getPublicUrl(audioStoragePath);
+      audioUrl = storedUrl;
       console.log('[FROM-LINK] Step 3 done.');
+
+
 
       // --- Cover ---
       let coverUrl = null;
@@ -500,6 +573,55 @@ router.post(
 
         const { data: { publicUrl: cUrl } } = supabase.storage.from('covers').getPublicUrl(coverPath);
         coverUrl = cUrl;
+      }
+
+      // --- Upload Subtitle Video File (optional) ---
+      if (req.files?.subtitle_video?.[0]) {
+        console.log('[FROM-LINK] Uploading subtitle video file...');
+        const videoFile = req.files.subtitle_video[0];
+        if (videoFile.size > 50 * 1024 * 1024) throw new Error('Vídeo de legenda excede 50MB.');
+        
+        const cleanVideoName = videoFile.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '');
+        const videoPath = `${req.userId}/${Date.now()}_${cleanVideoName}`;
+
+        await supabase.storage.from('songs').upload(videoPath, videoFile.buffer, {
+          contentType: videoFile.mimetype
+        });
+
+        const { data: { publicUrl: vUrl } } = supabase.storage.from('songs').getPublicUrl(videoPath);
+        subtitleVideoUrl = vUrl;
+      } else if (subtitleMode === 'video' && subtitleLinkMode === 'download' && subtitleVideoUrl) {
+        // --- Download Subtitle Video Linked via yt-dlp ---
+        const tmpVidId = `${req.userId}_vid_${Date.now()}`;
+        const rawVidPath = path.join(os.tmpdir(), `${tmpVidId}.mp4`);
+        tempFiles.push(rawVidPath);
+
+        console.log('[FROM-LINK] Download subtitle video via yt-dlp...');
+        await runYtdlp([
+          '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+          '-o', rawVidPath,
+          '--no-playlist',
+          '--force-ipv4',
+          '--no-warnings',
+          '--max-filesize', '50M',
+          '--', subtitleVideoUrl,
+        ], 60000);
+
+        if (fs.existsSync(rawVidPath)) {
+          console.log('[FROM-LINK] Subtitle video downloaded, uploading to Supabase...');
+          const vidBuffer = fs.readFileSync(rawVidPath);
+          const videoStoragePath = `${req.userId}/${Date.now()}_subtitle.mp4`;
+          
+          await supabase.storage.from('songs').upload(videoStoragePath, vidBuffer, {
+            contentType: 'video/mp4',
+            upsert: false
+          });
+
+          const { data: { publicUrl: storedVidUrl } } = supabase.storage.from('songs').getPublicUrl(videoStoragePath);
+          subtitleVideoUrl = storedVidUrl;
+        } else {
+          console.log('[FROM-LINK] Failed to download subtitle video. Ignoring.');
+        }
       }
 
       // --- Insert DB record ---

@@ -80,7 +80,7 @@ export const api = {
     return handleResponse(res);
   },
 
-  async uploadSong({ title, artist, isPublic, audioFile, coverFile, subtitleMode, subtitleData, subtitleVideoUrl }) {
+  async uploadSong({ title, artist, isPublic, audioFile, coverFile, subtitleMode, subtitleData, subtitleVideoUrl, subtitleVideoFile, subtitleLinkMode }) {
     const headers = getAuthHeaders();
     
     const formData = new FormData();
@@ -94,6 +94,8 @@ export const api = {
     if (subtitleMode) formData.append('subtitle_mode', subtitleMode);
     if (subtitleData) formData.append('subtitle_data', JSON.stringify(subtitleData));
     if (subtitleVideoUrl) formData.append('subtitle_video_url', subtitleVideoUrl);
+    if (subtitleVideoFile) formData.append('subtitle_video', subtitleVideoFile);
+    if (subtitleLinkMode) formData.append('subtitle_link_mode', subtitleLinkMode);
 
     const res = await fetch(`${API_BASE}/api/songs/upload`, {
       method: 'POST',
@@ -103,7 +105,7 @@ export const api = {
     return handleResponse(res);
   },
 
-  async uploadSongFromLink({ title, artist, isPublic, url, coverFile, subtitleMode, subtitleData, subtitleVideoUrl }) {
+  async uploadSongFromLink({ title, artist, isPublic, url, coverFile, subtitleMode, subtitleData, subtitleVideoUrl, subtitleVideoFile, subtitleLinkMode }) {
     const headers = getAuthHeaders();
 
     const formData = new FormData();
@@ -117,6 +119,8 @@ export const api = {
     if (subtitleMode) formData.append('subtitle_mode', subtitleMode);
     if (subtitleData) formData.append('subtitle_data', JSON.stringify(subtitleData));
     if (subtitleVideoUrl) formData.append('subtitle_video_url', subtitleVideoUrl);
+    if (subtitleVideoFile) formData.append('subtitle_video', subtitleVideoFile);
+    if (subtitleLinkMode) formData.append('subtitle_link_mode', subtitleLinkMode);
 
     const res = await fetch(`${API_BASE}/api/songs/from-link`, {
       method: 'POST',
@@ -186,6 +190,16 @@ export const api = {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ song_id: songId })
+    });
+    return handleResponse(res);
+  },
+
+  async reorderPlaylistSongs(playlistId, orderedIds) {
+    const headers = getAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/playlists/${playlistId}/songs/reorder`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderedIds })
     });
     return handleResponse(res);
   },
