@@ -37,15 +37,19 @@ export default function Player({ isMobile = false }) {
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [isMobileFullScreen, setIsMobileFullScreen] = useState(false)
 
-  const getAudioUrl = (url) => {
-    if (!url) return ''
-    if (url.match(/youtube\.com\/|youtu\.be\/|tiktok\.com\//)) {
-      const apiBase = import.meta.env.VITE_API_URL || ''
-      return `${apiBase}/api/songs/proxy-stream?url=${encodeURIComponent(url)}&type=audio&token=${token || ''}`
-    }
-    return url
-  }
-  const audioUrl = currentSong ? getAudioUrl(currentSong.file_url) : ''
+  const apiBase = import.meta.env.VITE_API_URL || ''
+
+  // audioUrl is set only when the SONG changes (or when the token first becomes
+  // available), NOT on every token refresh — preventing mid-song reloads.
+  // The backend generates a 1-hour signed Supabase URL and redirects, so the
+  // browser loads directly from Supabase CDN with full range-request support.
+  const [audioUrl, setAudioUrl] = useState('')
+  const hasToken = !!token
+  useEffect(() => {
+    if (!currentSong || !token) { setAudioUrl(''); return }
+    setAudioUrl(`${apiBase}/api/songs/${currentSong.id}/stream?token=${token}`)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSong?.id, hasToken, apiBase])
 
   // Share audio element for direct access (Lyrics, etc.)
   useEffect(() => {
