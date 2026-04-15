@@ -39,15 +39,26 @@ export default function Player({ isMobile = false }) {
 
   const apiBase = import.meta.env.VITE_API_URL || ''
 
-  // audioUrl is set only when the SONG changes (or when the token first becomes
-  // available), NOT on every token refresh — preventing mid-song reloads.
-  // The backend generates a 1-hour signed Supabase URL and redirects, so the
-  // browser loads directly from Supabase CDN with full range-request support.
+  // Fetch the signed audio URL from the backend when the song changes.
+  // The backend returns a JSON { url } with a direct Supabase signed URL,
+  // which the <audio> element loads without any cross-origin redirects.
   const [audioUrl, setAudioUrl] = useState('')
   const hasToken = !!token
   useEffect(() => {
     if (!currentSong || !token) { setAudioUrl(''); return }
-    setAudioUrl(`${apiBase}/api/songs/${currentSong.id}/stream?token=${token}`)
+    setAudioUrl('') // clear old URL while fetching new one
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`${apiBase}/api/songs/${currentSong.id}/stream?token=${token}`)
+        if (!res.ok) throw new Error(`Stream error ${res.status}`)
+        const data = await res.json()
+        if (!cancelled && data.url) setAudioUrl(data.url)
+      } catch (err) {
+        console.error('[Player] Failed to get stream URL:', err.message)
+      }
+    })()
+    return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSong?.id, hasToken, apiBase])
 

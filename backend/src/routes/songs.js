@@ -730,12 +730,9 @@ function cacheSet(key, value, ttlMs) {
 
 /**
  * GET /api/songs/:id/stream
- * Returns a short-lived signed URL (redirect) for the song's audio file.
- * Works regardless of whether the Supabase Storage bucket is public or private,
- * because we use the service-role key to generate the signed URL server-side.
- *
- * The browser follows the 302 redirect and loads audio directly from Supabase CDN,
- * so range requests and seeking work natively.
+ * Returns a JSON object with a short-lived signed URL for the song's audio file.
+ * The frontend fetches this URL and sets it directly on the <audio> element,
+ * avoiding cross-origin redirect issues that some browsers block.
  */
 router.get('/:id/stream', verifyAuth, async (req, res) => {
   try {
@@ -768,17 +765,14 @@ router.get('/:id/stream', verifyAuth, async (req, res) => {
       return res.status(404).json({ error: 'Arquivo de áudio não encontrado.' });
     }
 
-    // YouTube / TikTok raw URLs → redirect to proxy-stream
+    // YouTube / TikTok raw URLs → proxy-stream URL
     if (/youtube\.com|youtu\.be|tiktok\.com/.test(fileUrl)) {
       const token = req.query.token || '';
-      return res.redirect(
-        `/api/songs/proxy-stream?url=${encodeURIComponent(fileUrl)}&type=audio&token=${token}`
-      );
+      const proxyUrl = `${req.protocol}://${req.get('host')}/api/songs/proxy-stream?url=${encodeURIComponent(fileUrl)}&type=audio&token=${token}`;
+      return res.json({ url: proxyUrl });
     }
 
     // Supabase Storage URL → extract bucket path and generate a signed URL
-    const supabaseUrl = process.env.SUPABASE_URL || '';
-    // URL format: <supabaseUrl>/storage/v1/object/public/<bucket>/<path>
     const storageRegex = /\/storage\/v1\/object\/(?:public|sign)\/songs\/(.+?)(?:\?.*)?$/;
     const match = fileUrl.match(storageRegex);
 
@@ -786,20 +780,20 @@ router.get('/:id/stream', verifyAuth, async (req, res) => {
       const storagePath = decodeURIComponent(match[1]);
       const { data: signed, error: signErr } = await supabase.storage
         .from('songs')
-        .createSignedUrl(storagePath, 3600); // valid for 1 hour
+        .createSignedUrl(storagePath, 3600);
 
       if (signErr || !signed?.signedUrl) {
         console.error('[stream] createSignedUrl failed:', signErr?.message);
-        // Fallback: redirect to the original public URL
-        return res.redirect(302, fileUrl);
+        // Fallback: return the original public URL
+        return res.json({ url: fileUrl });
       }
 
       res.setHeader('Cache-Control', 'private, max-age=3500');
-      return res.redirect(302, signed.signedUrl);
+      return res.json({ url: signed.signedUrl });
     }
 
-    // Unknown URL format — redirect as-is
-    return res.redirect(302, fileUrl);
+    // Unknown URL format — return as-is
+    return res.json({ url: fileUrl });
   } catch (err) {
     console.error('[GET /songs/:id/stream]', err.message);
     res.status(500).json({ error: 'Erro ao carregar áudio.' });
