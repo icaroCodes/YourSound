@@ -3,9 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../store/useAuthStore'
 import { api } from '../lib/api'
 import {
-  Upload as UploadIcon, Music4, ImageIcon, X, Check,
-  Link2, AlertCircle, CheckCircle2, Globe, Lock,
-  Type, Video, AlignLeft
+  Upload as UploadIcon, Music4, ImageIcon, X,
+  AlertCircle, CheckCircle2, Globe, Lock,
+  Type, AlignLeft
 } from 'lucide-react'
 
 // ─── Animation variants ───────────────────────────────────────────────────────
@@ -60,22 +60,15 @@ export default function Upload() {
   const [coverFile, setCoverFile] = useState(null)
   const [coverPreview, setCoverPreview] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [useLink, setUseLink] = useState(false)
-  const [linkUrl, setLinkUrl] = useState('')
   const [isDragging, setIsDragging] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
   
-  const [subtitleMode, setSubtitleMode] = useState('none') // 'none', 'manual', 'video'
-  const [subtitleVideoType, setSubtitleVideoType] = useState('link') // 'link', 'file'
-  const [subtitleLinkMode, setSubtitleLinkMode] = useState('stream') // 'stream', 'download'
+  const [subtitleMode, setSubtitleMode] = useState('none') // 'none', 'manual'
   const [subtitleData, setSubtitleData] = useState([])
-  const [subtitleVideoUrl, setSubtitleVideoUrl] = useState('')
-  const [subtitleVideoFile, setSubtitleVideoFile] = useState(null)
   const [manualText, setManualText] = useState('')
 
   const audioInputRef = useRef(null)
   const coverInputRef = useRef(null)
-  const subtitleVideoInputRef = useRef(null)
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -111,12 +104,8 @@ export default function Upload() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!useLink && !audioFile) {
+    if (!audioFile) {
       setMessage({ type: 'error', text: 'Selecione um arquivo de áudio.' })
-      return
-    }
-    if (useLink && !linkUrl.trim()) {
-      setMessage({ type: 'error', text: 'Insira o link do vídeo.' })
       return
     }
 
@@ -124,26 +113,18 @@ export default function Upload() {
     setMessage({ type: '', text: '' })
 
     try {
-      const payload = {
-        title, artist, isPublic, coverFile,
+      const result = await api.uploadSong({
+        title, artist, isPublic, audioFile, coverFile,
         subtitleMode,
         subtitleData: subtitleMode === 'manual' ? subtitleData : null,
-        subtitleVideoUrl: subtitleMode === 'video' && subtitleVideoType === 'link' ? subtitleVideoUrl : null,
-        subtitleVideoFile: subtitleMode === 'video' && subtitleVideoType === 'file' ? subtitleVideoFile : null,
-        subtitleLinkMode: subtitleMode === 'video' && subtitleVideoType === 'link' ? subtitleLinkMode : null
-      }
-      const result = useLink
-        ? await api.uploadSongFromLink({ ...payload, url: linkUrl })
-        : await api.uploadSong({ ...payload, audioFile })
+      })
 
       setMessage({ type: 'success', text: result.message })
       setTitle(''); setArtist(''); setIsPublic(false)
-      setAudioFile(null); setCoverFile(null); setCoverPreview(null); setLinkUrl('')
-      setSubtitleMode('none'); setSubtitleData([]); setSubtitleVideoUrl(''); setManualText('')
-      setSubtitleVideoFile(null); setSubtitleVideoType('link'); setSubtitleLinkMode('stream')
+      setAudioFile(null); setCoverFile(null); setCoverPreview(null)
+      setSubtitleMode('none'); setSubtitleData([]); setManualText('')
       if (audioInputRef.current) audioInputRef.current.value = ''
       if (coverInputRef.current) coverInputRef.current.value = ''
-      if (subtitleVideoInputRef.current) subtitleVideoInputRef.current.value = ''
     } catch (err) {
       setMessage({ type: 'error', text: err.message })
     } finally {
@@ -220,98 +201,47 @@ export default function Upload() {
           {/* ── Divisor ── */}
           <motion.div variants={fadeUp} className="h-px bg-zinc-900 my-2" />
 
-          {/* ── Toggle Fonte ── */}
+          {/* ── Área de Arquivo ── */}
           <motion.div variants={fadeUp}>
-            <div className="relative flex bg-zinc-900 rounded-2xl p-1 gap-1">
-              <motion.div
-                layoutId="tab-indicator"
-                className="absolute inset-y-1 rounded-full bg-white"
-                style={{ width: 'calc(50% - 4px)', left: useLink ? 'calc(50% + 0px)' : '4px' }}
-                transition={{ type: 'spring', damping: 24, stiffness: 300 }}
-              />
-              <button
-                type="button"
-                onClick={() => setUseLink(false)}
-                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl text-sm font-semibold transition-colors duration-200 ${
-                  !useLink ? 'text-black' : 'text-zinc-500 hover:text-zinc-300'
-                }`}
-              >
-                <UploadIcon size={14} />
-                Arquivo Local
-              </button>
-              <button
-                type="button"
-                onClick={() => setUseLink(true)}
-                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl text-sm font-semibold transition-colors duration-200 ${
-                  useLink ? 'text-black' : 'text-zinc-500 hover:text-zinc-300'
-                }`}
-              >
-                <Link2 size={14} />
-                Link (YT / TikTok)
-              </button>
-            </div>
+            <label className="block text-[11px] uppercase tracking-widest font-semibold text-zinc-500 mb-2 px-0.5">
+              Arquivo de Áudio
+            </label>
+            <input
+              ref={audioInputRef}
+              type="file" accept="audio/*"
+              className="hidden"
+              onChange={e => handleAudioChange(e.target.files[0])}
+            />
+            <motion.div
+              animate={{
+                borderColor: isDragging ? '#1ED45E' : audioFile ? 'rgba(30, 212, 94, 0.3)' : 'rgba(255,255,255,0.06)',
+                backgroundColor: isDragging ? 'rgba(30, 212, 94, 0.04)' : audioFile ? 'rgba(30, 212, 94, 0.03)' : 'rgba(255,255,255,0.015)',
+                scale: isDragging ? 1.01 : 1,
+              }}
+              transition={{ duration: 0.18 }}
+              onClick={() => audioInputRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              className="w-full min-h-[140px] rounded-xl border border-dashed flex flex-col items-center justify-center gap-3 cursor-pointer"
+            >
+              <AnimatePresence mode="wait">
+                {audioFile ? (
+                  <motion.div key="has-file" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center gap-2 px-6 text-center">
+                    <div className="w-10 h-10 rounded-full bg-[#1ED45E]/15 flex items-center justify-center">
+                      <Music4 size={18} className="text-[#1ED45E]" />
+                    </div>
+                    <p className="text-xs font-medium text-white truncate max-w-[200px]">{audioFile.name}</p>
+                  </motion.div>
+                ) : (
+                  <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-2 text-center px-6">
+                    <UploadIcon size={20} className="text-zinc-500" />
+                    <p className="text-xs font-medium text-zinc-400">Arraste ou clique para enviar áudio</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
           </motion.div>
-
-          {/* ── Área de Arquivo / Link ── */}
-          <AnimatePresence mode="wait">
-            {useLink ? (
-              <motion.div key="link" variants={fadeIn} initial="hidden" animate="show" exit="exit">
-                <label className="block text-[11px] uppercase tracking-widest font-semibold text-zinc-500 mb-2 px-0.5">
-                  URL do Vídeo
-                </label>
-                <div className="relative mb-3">
-                  <Link2 size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none" />
-                  <input
-                    type="url" required value={linkUrl}
-                    onChange={e => setLinkUrl(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3.5 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-sm
-                      placeholder:text-zinc-600 focus:outline-none focus:border-[#1ED45E] focus:ring-1 focus:ring-[#1ED45E]/40
-                      transition-all hover:border-zinc-700"
-                    placeholder="https://youtube.com/watch?v=... ou TikTok"
-                  />
-                </div>
-                <p className="text-[11px] text-zinc-600 mt-1 px-1">O áudio será baixado e armazenado automaticamente.</p>
-              </motion.div>
-            ) : (
-              <motion.div key="file" variants={fadeIn} initial="hidden" animate="show" exit="exit">
-                <input
-                  ref={audioInputRef}
-                  type="file" accept="audio/*"
-                  className="hidden"
-                  onChange={e => handleAudioChange(e.target.files[0])}
-                />
-                <motion.div
-                  animate={{
-                    borderColor: isDragging ? '#1ED45E' : audioFile ? 'rgba(30, 212, 94, 0.3)' : 'rgba(255,255,255,0.06)',
-                    backgroundColor: isDragging ? 'rgba(30, 212, 94, 0.04)' : audioFile ? 'rgba(30, 212, 94, 0.03)' : 'rgba(255,255,255,0.015)',
-                    scale: isDragging ? 1.01 : 1,
-                  }}
-                  transition={{ duration: 0.18 }}
-                  onClick={() => audioInputRef.current?.click()}
-                  onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={handleDrop}
-                  className="w-full min-h-[140px] rounded-xl border border-dashed flex flex-col items-center justify-center gap-3 cursor-pointer"
-                >
-                  <AnimatePresence mode="wait">
-                    {audioFile ? (
-                      <motion.div key="has-file" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center gap-2 px-6 text-center">
-                        <div className="w-10 h-10 rounded-full bg-[#1ED45E]/15 flex items-center justify-center">
-                          <Music4 size={18} className="text-[#1ED45E]" />
-                        </div>
-                        <p className="text-xs font-medium text-white truncate max-w-[200px]">{audioFile.name}</p>
-                      </motion.div>
-                    ) : (
-                      <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-2 text-center px-6">
-                        <UploadIcon size={20} className="text-zinc-500" />
-                        <p className="text-xs font-medium text-zinc-400">Arraste ou clique para enviar áudio</p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
 
           {/* ── Capa ── */}
           <motion.div variants={fadeUp}>
@@ -343,16 +273,15 @@ export default function Upload() {
 
           <motion.div variants={fadeUp} className="h-px bg-zinc-900 my-2" />
 
-          {/* ── Legendas e Fundo ── */}
+          {/* ── Legendas ── */}
           <motion.div variants={fadeUp} className="space-y-4">
             <label className="block text-[11px] uppercase tracking-widest font-semibold text-zinc-500 px-0.5">
-              Legendas e Fundo
+              Legendas
             </label>
-            <div className="grid grid-cols-3 gap-2 p-1 bg-zinc-900 rounded-2xl">
+            <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-900 rounded-2xl">
               {[
                 { id: 'none', label: 'Automática', icon: <AlignLeft size={14} /> },
-                { id: 'manual', label: 'Manual', icon: <Type size={14} /> },
-                { id: 'video', label: 'Vídeo', icon: <Video size={14} /> }
+                { id: 'manual', label: 'Manual', icon: <Type size={14} /> }
               ].map(opt => (
                 <button
                   key={opt.id}
@@ -377,7 +306,7 @@ export default function Upload() {
                     value={manualText}
                     onChange={e => setManualText(e.target.value)}
                     placeholder="Cole a letra da música aqui..."
-                    className="w-full h-32 px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-red-500 transition-all resize-none"
+                    className="w-full h-32 px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-[#1ED45E] transition-all resize-none"
                   />
                   <button
                     type="button"
@@ -389,91 +318,10 @@ export default function Upload() {
                       setSubtitleData(lines)
                       setMessage({ type: 'success', text: 'Letra processada!' })
                     }}
-                    className="w-full py-2.5 bg-red-500/10 text-red-500 rounded-xl text-xs font-bold hover:bg-red-500/20 transition-colors"
+                    className="w-full py-2.5 bg-[#1ED45E]/10 text-[#1ED45E] rounded-xl text-xs font-bold hover:bg-[#1ED45E]/20 transition-colors"
                   >
                     Confirmar Letra
                   </button>
-                </motion.div>
-              )}
-
-              {subtitleMode === 'video' && (
-                <motion.div key="video" variants={fadeIn} initial="hidden" animate="show" exit="exit" className="space-y-3">
-                  <div className="flex bg-zinc-950 rounded-xl p-1 border border-zinc-800">
-                    <button
-                      type="button"
-                      onClick={() => setSubtitleVideoType('link')}
-                      className={`flex-1 py-1.5 rounded-lg text-[10px] uppercase tracking-wider font-bold transition-all ${
-                        subtitleVideoType === 'link' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
-                      }`}
-                    >
-                      Apenas Link
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSubtitleVideoType('file')}
-                      className={`flex-1 py-1.5 rounded-lg text-[10px] uppercase tracking-wider font-bold transition-all ${
-                        subtitleVideoType === 'file' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
-                      }`}
-                    >
-                      Enviar Arquivo
-                    </button>
-                  </div>
-
-                  {subtitleVideoType === 'link' ? (
-                    <div className="space-y-2">
-                      <div className="relative">
-                        <Video size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" />
-                        <input
-                          type="url"
-                          value={subtitleVideoUrl}
-                          onChange={e => setSubtitleVideoUrl(e.target.value)}
-                          placeholder="URL do YouTube ou TikTok"
-                          className="w-full pl-10 pr-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-red-500 transition-all"
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setSubtitleLinkMode('stream')}
-                          className={`flex-1 py-2 rounded-lg text-[11px] font-bold border transition-colors ${
-                            subtitleLinkMode === 'stream' 
-                              ? 'bg-red-500/10 text-red-500 border-red-500/30' 
-                              : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-white'
-                          }`}
-                        >
-                          Apenas Link (Rápido)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSubtitleLinkMode('download')}
-                          className={`flex-1 py-2 rounded-lg text-[11px] font-bold border transition-colors ${
-                            subtitleLinkMode === 'download' 
-                              ? 'bg-red-500/10 text-red-500 border-red-500/30' 
-                              : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-white'
-                          }`}
-                        >
-                          Baixar MP4 (Seguro)
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <input
-                        ref={subtitleVideoInputRef}
-                        type="file" accept="video/*" className="hidden"
-                        onChange={e => setSubtitleVideoFile(e.target.files[0])}
-                      />
-                      <div
-                        onClick={() => subtitleVideoInputRef.current?.click()}
-                        className="flex flex-col items-center justify-center gap-2 w-full py-4 border border-dashed border-zinc-700 bg-zinc-900/50 hover:bg-zinc-900 rounded-xl cursor-pointer transition-colors"
-                      >
-                        <UploadIcon size={20} className={subtitleVideoFile ? 'text-red-500' : 'text-zinc-500'} />
-                        <p className={`text-xs font-medium max-w-[200px] truncate ${subtitleVideoFile ? 'text-white' : 'text-zinc-400'}`}>
-                          {subtitleVideoFile ? subtitleVideoFile.name : 'Selecionar arquivo de vídeo'}
-                        </p>
-                      </div>
-                    </div>
-                  )}
                 </motion.div>
               )}
 

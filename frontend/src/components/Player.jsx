@@ -45,7 +45,12 @@ export default function Player({ isMobile = false }) {
   const [audioUrl, setAudioUrl] = useState('')
   const hasToken = !!token
   useEffect(() => {
-    if (!currentSong || !token) { setAudioUrl(''); return }
+    if (!currentSong) { setAudioUrl(''); return }
+    if (!token) {
+      // No token yet — use the direct URL so playback isn't blocked
+      setAudioUrl(currentSong.file_url || '')
+      return
+    }
     setAudioUrl('') // clear old URL while fetching new one
     let cancelled = false
     ;(async () => {
@@ -54,8 +59,10 @@ export default function Player({ isMobile = false }) {
         if (!res.ok) throw new Error(`Stream error ${res.status}`)
         const data = await res.json()
         if (!cancelled && data.url) setAudioUrl(data.url)
+        else if (!cancelled) setAudioUrl(currentSong.file_url || '')
       } catch (err) {
-        console.error('[Player] Failed to get stream URL:', err.message)
+        console.error('[Player] Stream failed, using direct URL:', err.message)
+        if (!cancelled) setAudioUrl(currentSong.file_url || '')
       }
     })()
     return () => { cancelled = true }
