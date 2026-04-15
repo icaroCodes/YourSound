@@ -57,6 +57,8 @@ export default function Upload() {
   const [artist, setArtist] = useState('')
   const [isPublic, setIsPublic] = useState(false)
   const [audioFile, setAudioFile] = useState(null)
+  const [audioMode, setAudioMode] = useState('file') // 'file' or 'link'
+  const [audioUrl, setAudioUrl] = useState('')
   const [coverFile, setCoverFile] = useState(null)
   const [coverPreview, setCoverPreview] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -104,8 +106,12 @@ export default function Upload() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!audioFile) {
+    if (audioMode === 'file' && !audioFile) {
       setMessage({ type: 'error', text: 'Selecione um arquivo de áudio.' })
+      return
+    }
+    if (audioMode === 'link' && !audioUrl) {
+      setMessage({ type: 'error', text: 'Insira o link do áudio.' })
       return
     }
 
@@ -113,15 +119,25 @@ export default function Upload() {
     setMessage({ type: '', text: '' })
 
     try {
-      const result = await api.uploadSong({
-        title, artist, isPublic, audioFile, coverFile,
-        subtitleMode,
-        subtitleData: subtitleMode === 'manual' ? subtitleData : null,
-      })
+      let result;
+      if (audioMode === 'link') {
+        result = await api.importSongFromLink({
+          title, artist, isPublic, url: audioUrl, coverFile,
+          subtitleMode,
+          subtitleData: subtitleMode === 'manual' ? subtitleData : null,
+        })
+      } else {
+        result = await api.uploadSong({
+          title, artist, isPublic, audioFile, coverFile,
+          subtitleMode,
+          subtitleData: subtitleMode === 'manual' ? subtitleData : null,
+        })
+      }
 
       setMessage({ type: 'success', text: result.message })
       setTitle(''); setArtist(''); setIsPublic(false)
       setAudioFile(null); setCoverFile(null); setCoverPreview(null)
+      setAudioUrl('')
       setSubtitleMode('none'); setSubtitleData([]); setManualText('')
       if (audioInputRef.current) audioInputRef.current.value = ''
       if (coverInputRef.current) coverInputRef.current.value = ''
@@ -201,46 +217,80 @@ export default function Upload() {
           {/* ── Divisor ── */}
           <motion.div variants={fadeUp} className="h-px bg-zinc-900 my-2" />
 
-          {/* ── Área de Arquivo ── */}
+          {/* ── Área de Áudio (Arquivo ou Link) ── */}
           <motion.div variants={fadeUp}>
-            <label className="block text-[11px] uppercase tracking-widest font-semibold text-zinc-500 mb-2 px-0.5">
-              Arquivo de Áudio
-            </label>
-            <input
-              ref={audioInputRef}
-              type="file" accept="audio/*"
-              className="hidden"
-              onChange={e => handleAudioChange(e.target.files[0])}
-            />
-            <motion.div
-              animate={{
-                borderColor: isDragging ? '#1ED45E' : audioFile ? 'rgba(30, 212, 94, 0.3)' : 'rgba(255,255,255,0.06)',
-                backgroundColor: isDragging ? 'rgba(30, 212, 94, 0.04)' : audioFile ? 'rgba(30, 212, 94, 0.03)' : 'rgba(255,255,255,0.015)',
-                scale: isDragging ? 1.01 : 1,
-              }}
-              transition={{ duration: 0.18 }}
-              onClick={() => audioInputRef.current?.click()}
-              onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={handleDrop}
-              className="w-full min-h-[140px] rounded-xl border border-dashed flex flex-col items-center justify-center gap-3 cursor-pointer"
-            >
-              <AnimatePresence mode="wait">
-                {audioFile ? (
-                  <motion.div key="has-file" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center gap-2 px-6 text-center">
-                    <div className="w-10 h-10 rounded-full bg-[#1ED45E]/15 flex items-center justify-center">
-                      <Music4 size={18} className="text-[#1ED45E]" />
-                    </div>
-                    <p className="text-xs font-medium text-white truncate max-w-[200px]">{audioFile.name}</p>
-                  </motion.div>
-                ) : (
-                  <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-2 text-center px-6">
-                    <UploadIcon size={20} className="text-zinc-500" />
-                    <p className="text-xs font-medium text-zinc-400">Arraste ou clique para enviar áudio</p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-[11px] uppercase tracking-widest font-semibold text-zinc-500 px-0.5">
+                Áudio da Música
+              </label>
+              <div className="flex bg-zinc-900 rounded-full p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setAudioMode('file')}
+                  className={`px-3 py-1 rounded-full text-[10px] font-bold transition-colors ${
+                    audioMode === 'file' ? 'bg-[#1ED45E] text-black' : 'text-zinc-500 hover:text-white'
+                  }`}
+                >
+                  Arquivo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAudioMode('link')}
+                  className={`px-3 py-1 rounded-full text-[10px] font-bold transition-colors ${
+                    audioMode === 'link' ? 'bg-[#1ED45E] text-black' : 'text-zinc-500 hover:text-white'
+                  }`}
+                >
+                  Link YouTube/TikTok
+                </button>
+              </div>
+            </div>
+            
+            {audioMode === 'file' ? (
+              <>
+                <input
+                  ref={audioInputRef}
+                  type="file" accept="audio/*"
+                  className="hidden"
+                  onChange={e => handleAudioChange(e.target.files[0])}
+                />
+                <motion.div
+                  animate={{
+                    borderColor: isDragging ? '#1ED45E' : audioFile ? 'rgba(30, 212, 94, 0.3)' : 'rgba(255,255,255,0.06)',
+                    backgroundColor: isDragging ? 'rgba(30, 212, 94, 0.04)' : audioFile ? 'rgba(30, 212, 94, 0.03)' : 'rgba(255,255,255,0.015)',
+                    scale: isDragging ? 1.01 : 1,
+                  }}
+                  transition={{ duration: 0.18 }}
+                  onClick={() => audioInputRef.current?.click()}
+                  onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
+                  className="w-full min-h-[140px] rounded-xl border border-dashed flex flex-col items-center justify-center gap-3 cursor-pointer"
+                >
+                  <AnimatePresence mode="wait">
+                    {audioFile ? (
+                      <motion.div key="has-file" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center gap-2 px-6 text-center">
+                        <div className="w-10 h-10 rounded-full bg-[#1ED45E]/15 flex items-center justify-center">
+                          <Music4 size={18} className="text-[#1ED45E]" />
+                        </div>
+                        <p className="text-xs font-medium text-white truncate max-w-[200px]">{audioFile.name}</p>
+                      </motion.div>
+                    ) : (
+                      <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-2 text-center px-6">
+                        <UploadIcon size={20} className="text-zinc-500" />
+                        <p className="text-xs font-medium text-zinc-400">Arraste ou clique para enviar áudio</p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              </>
+            ) : (
+              <Input
+                type="url"
+                value={audioUrl}
+                onChange={e => setAudioUrl(e.target.value)}
+                placeholder="Exemplo: https://tiktok.com/... ou https://youtube.com/..."
+              />
+            )}
           </motion.div>
 
           {/* ── Capa ── */}
@@ -311,11 +361,18 @@ export default function Upload() {
                   <button
                     type="button"
                     onClick={() => {
-                      const lines = manualText.split('\n').filter(l => l.trim()).map((text, i) => ({
-                        time: i * 3.5,
-                        text: text.trim()
-                      }))
-                      setSubtitleData(lines)
+                      const parsedLines = manualText.split('\n').map(l => l.trim()).filter(Boolean).map((text, i) => {
+                        const match = text.match(/^\[?(?:(\d{1,2}):)?(\d+)(?:\.(\d+))?\]?\s*(.*)/);
+                        if (match) {
+                          const min = match[1] ? parseInt(match[1]) : 0;
+                          const sec = parseInt(match[2]);
+                          const msStr = match[3] || '0';
+                          const ms = parseInt(msStr) / Math.pow(10, msStr.length);
+                          return { time: min * 60 + sec + ms, text: (match[4] || '').trim() };
+                        }
+                        return { time: i * 3.5, text: text.trim() };
+                      })
+                      setSubtitleData(parsedLines)
                       setMessage({ type: 'success', text: 'Letra processada!' })
                     }}
                     className="w-full py-2.5 bg-[#1ED45E]/10 text-[#1ED45E] rounded-xl text-xs font-bold hover:bg-[#1ED45E]/20 transition-colors"

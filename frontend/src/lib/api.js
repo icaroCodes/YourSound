@@ -102,6 +102,28 @@ export const api = {
     return handleResponse(res);
   },
 
+  async importSongFromLink({ title, artist, isPublic, url, coverFile, subtitleMode, subtitleData }) {
+    const headers = getAuthHeaders();
+    
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('artist', artist);
+    formData.append('is_public', String(isPublic));
+    formData.append('url', url);
+    if (coverFile) {
+      formData.append('cover', coverFile);
+    }
+    if (subtitleMode) formData.append('subtitle_mode', subtitleMode);
+    if (subtitleData) formData.append('subtitle_data', JSON.stringify(subtitleData));
+
+    const res = await fetch(`${API_BASE}/api/songs/from-link`, {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+    return handleResponse(res);
+  },
+
 
 
   // ── Playlists ──────────────────────────────

@@ -11,6 +11,8 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
   const [title, setTitle] = useState('')
   const [artist, setArtist] = useState('')
   const [file, setFile] = useState(null)
+  const [audioMode, setAudioMode] = useState('file') // 'file', 'link'
+  const [audioUrl, setAudioUrl] = useState('')
   const [isPublic, setIsPublic] = useState(false)
   const [subtitleMode, setSubtitleMode] = useState('none') // 'none', 'manual'
   const [subtitleData, setSubtitleData] = useState([])
@@ -27,6 +29,8 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
         setTitle('')
         setArtist('')
         setFile(null)
+        setAudioMode('file')
+        setAudioUrl('')
         setIsPublic(false)
         setSubtitleMode('none')
         setSubtitleData([])
@@ -43,17 +47,31 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
     setError('')
 
     try {
-      if (!file || !title || !artist) throw new Error('Selecione um arquivo e preencha os campos')
+      if (audioMode === 'file' && !file) throw new Error('Selecione um arquivo de áudio')
+      if (audioMode === 'link' && !audioUrl) throw new Error('Insira o link da música')
+      if (!title || !artist) throw new Error('Preencha o título e o artista')
       
-      await api.uploadSong({
-        title,
-        artist,
-        isPublic,
-        audioFile: file,
-        coverFile,
-        subtitleMode,
-        subtitleData: subtitleMode === 'manual' ? subtitleData : null,
-      })
+      if (audioMode === 'link') {
+        await api.importSongFromLink({
+          title,
+          artist,
+          isPublic,
+          url: audioUrl,
+          coverFile,
+          subtitleMode,
+          subtitleData: subtitleMode === 'manual' ? subtitleData : null,
+        })
+      } else {
+        await api.uploadSong({
+          title,
+          artist,
+          isPublic,
+          audioFile: file,
+          coverFile,
+          subtitleMode,
+          subtitleData: subtitleMode === 'manual' ? subtitleData : null,
+        })
+      }
 
       setSuccess(true)
       setTimeout(onClose, 2000)
@@ -106,22 +124,55 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
             )}
 
             <div className="space-y-4">
-              {/* Audio File */}
+              {/* Audio File or Link */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-zinc-500 uppercase ml-1 tracking-widest">Arquivo de Áudio</label>
-                <label className="flex flex-col items-center justify-center w-full aspect-[4/1] bg-white/5 border-2 border-dashed border-white/10 rounded-xl cursor-pointer hover:bg-white/10 transition-colors">
-                  <div className="flex flex-col items-center justify-center">
-                    {file ? (
-                       <p className="text-spotify-green font-bold text-sm truncate max-w-[200px]">{file.name}</p>
-                    ) : (
-                       <>
-                         <CloudUpload size={20} className="text-zinc-500 mb-1" />
-                         <p className="text-[10px] text-zinc-500 font-bold">Selecionar Áudio</p>
-                       </>
-                    )}
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-black text-zinc-500 uppercase ml-1 tracking-widest">Áudio da Música</label>
+                  <div className="flex gap-1.5 bg-white/5 rounded-full p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setAudioMode('file')}
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-black transition-colors ${
+                        audioMode === 'file' ? 'bg-spotify-green text-black' : 'text-zinc-500'
+                      }`}
+                    >
+                      Arquivo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAudioMode('link')}
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-black transition-colors ${
+                        audioMode === 'link' ? 'bg-spotify-green text-black' : 'text-zinc-500'
+                      }`}
+                    >
+                      Link
+                    </button>
                   </div>
-                  <input type="file" className="hidden" accept="audio/*" onChange={e => setFile(e.target.files[0])} required />
-                </label>
+                </div>
+
+                {audioMode === 'file' ? (
+                  <label className="flex flex-col items-center justify-center w-full aspect-[4/1] bg-white/5 border-2 border-dashed border-white/10 rounded-xl cursor-pointer hover:bg-white/10 transition-colors">
+                    <div className="flex flex-col items-center justify-center">
+                      {file ? (
+                         <p className="text-spotify-green font-bold text-sm truncate max-w-[200px]">{file.name}</p>
+                      ) : (
+                         <>
+                           <CloudUpload size={20} className="text-zinc-500 mb-1" />
+                           <p className="text-[10px] text-zinc-500 font-bold">Selecionar Áudio</p>
+                         </>
+                      )}
+                    </div>
+                    <input type="file" className="hidden" accept="audio/*" onChange={e => setFile(e.target.files[0])} />
+                  </label>
+                ) : (
+                  <input
+                    type="url"
+                    value={audioUrl}
+                    onChange={e => setAudioUrl(e.target.value)}
+                    placeholder="Link do YouTube ou TikTok"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-spotify-green outline-none"
+                  />
+                )}
               </div>
 
               {/* Title & Artist */}
@@ -209,11 +260,18 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
                     <button
                       type="button"
                       onClick={() => {
-                        const lines = manualText.split('\n').filter(l => l.trim()).map((text, i) => ({
-                          time: i * 3.5,
-                          text: text.trim()
-                        }))
-                        setSubtitleData(lines)
+                        const parsedLines = manualText.split('\n').map(l => l.trim()).filter(Boolean).map((text, i) => {
+                          const match = text.match(/^\[?(?:(\d{1,2}):)?(\d+)(?:\.(\d+))?\]?\s*(.*)/);
+                          if (match) {
+                            const min = match[1] ? parseInt(match[1]) : 0;
+                            const sec = parseInt(match[2]);
+                            const msStr = match[3] || '0';
+                            const ms = parseInt(msStr) / Math.pow(10, msStr.length);
+                            return { time: min * 60 + sec + ms, text: (match[4] || '').trim() };
+                          }
+                          return { time: i * 3.5, text: text.trim() };
+                        });
+                        setSubtitleData(parsedLines)
                         setError('') // Clear error if any
                       }}
                       className="w-full py-2 bg-white/10 text-white rounded-lg text-xs font-bold"
