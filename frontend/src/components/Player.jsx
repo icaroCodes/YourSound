@@ -104,10 +104,11 @@ export default function Player({ isMobile = false }) {
       fadeInterval.current = null
     }
 
-    if (isPlaying) {
+    // Don't try to play if audioUrl hasn't loaded yet — autoPlay handles it
+    if (isPlaying && audioUrl) {
       audio.volume = Math.pow(volume, 2)
       audio.play().catch(e => console.error("Playback error:", e))
-    } else {
+    } else if (!isPlaying) {
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent)
       if (isIOS || audio.volume <= 0.01) {
         audio.pause()
@@ -133,7 +134,7 @@ export default function Player({ isMobile = false }) {
     return () => {
       if (fadeInterval.current) clearInterval(fadeInterval.current)
     }
-  }, [isPlaying, currentSong, volume])
+  }, [isPlaying, currentSong, volume, audioUrl])
 
   useEffect(() => {
     if (audioRef.current && isPlaying) {
