@@ -12,6 +12,7 @@ import {
 import AddToPlaylistModal from './AddToPlaylistModal'
 import { useDialogStore } from '../store/useDialogStore'
 import { useAuthStore } from '../store/useAuthStore'
+import { useLiquidGlass } from '../hooks/useLiquidGlass'
 
 export default function Player({ isMobile = false }) {
   const token = useAuthStore(state => state.session?.access_token)
@@ -454,22 +455,69 @@ export default function Player({ isMobile = false }) {
       </div>
 
       {pipWindow && createPortal(
-        <div className="w-full h-screen flex flex-col p-5 bg-[#121212] overflow-hidden text-white select-none">
-          <div className="flex-1 w-full min-h-0 mb-6 flex items-center justify-center">
-            {currentSong.cover_url ? <img src={currentSong.cover_url} className="w-full h-full max-w-[400px] object-cover rounded-xl shadow-2xl" alt="" /> : <div className="w-full h-full max-w-[400px] bg-zinc-800 rounded-xl flex items-center justify-center shadow-2xl"><span className="text-zinc-500 text-6xl">&#9835;</span></div>}
-          </div>
-          <div className="flex flex-col shrink-0 mb-5 px-1">
-             <h3 className="font-bold text-[22px] truncate mb-1 leading-tight">{currentSong.title}</h3>
-             <p className="text-zinc-400 text-[15px] truncate">{currentSong.artist}</p>
-          </div>
-          <div className="flex items-center justify-center gap-7">
-            <button onClick={previous}><SkipBack size={26} fill="currentColor" /></button>
-            <button onClick={togglePlay} className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center shadow-lg">{isPlaying ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" className="ml-1" />}</button>
-            <button onClick={next}><SkipForward size={26} fill="currentColor" /></button>
-          </div>
-        </div>,
+        <PipContent 
+          currentSong={currentSong} 
+          isPlaying={isPlaying} 
+          previous={previous} 
+          next={next} 
+          togglePlay={togglePlay} 
+        />,
         pipWindow.document.body
       )}
     </div>
   )
+}
+
+const GLASS_CONFIG = {
+  floating: false,
+  blurAmount: 0.07,
+  refraction: 1.08,
+  chromAberration: 0.05,
+  edgeHighlight: 0.05,
+  specular: 0,
+  fresnel: 1,
+  distortion: 0,
+  cornerRadius: 20,
+  zRadius: 40,
+  opacity: 1,
+  saturation: 0,
+  brightness: 0,
+  shadowOpacity: 0.3,
+  shadowSpread: 10,
+  bevelMode: 0,
+};
+
+function PipContent({ currentSong, isPlaying, previous, next, togglePlay }) {
+  const { rootRef, glassRef } = useLiquidGlass([isPlaying, currentSong]);
+
+  return (
+    <div ref={rootRef} className="relative w-full h-screen overflow-hidden bg-[#121212] select-none text-white">
+      {currentSong?.cover_url && (
+        <img 
+          src={currentSong.cover_url} 
+          className="absolute inset-0 w-full h-full object-cover opacity-50" 
+          alt="" 
+          crossOrigin="anonymous" 
+        />
+      )}
+      
+      <div 
+        ref={glassRef}
+        className="absolute inset-5 flex flex-col p-5 justify-end"
+        data-config={JSON.stringify(GLASS_CONFIG)}
+      >
+        <div className="flex flex-col shrink-0 mb-5 px-1 mt-auto">
+           <h3 className="font-bold text-[22px] truncate mb-1 leading-tight">{currentSong?.title}</h3>
+           <p className="text-zinc-400 text-[15px] truncate">{currentSong?.artist}</p>
+        </div>
+        <div className="flex items-center justify-center gap-7">
+          <button onClick={previous}><SkipBack size={26} fill="currentColor" /></button>
+          <button onClick={togglePlay} className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center shadow-lg hover:scale-105 transition-transform">
+            {isPlaying ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" className="ml-1" />}
+          </button>
+          <button onClick={next}><SkipForward size={26} fill="currentColor" /></button>
+        </div>
+      </div>
+    </div>
+  );
 }
