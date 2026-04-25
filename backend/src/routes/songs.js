@@ -404,6 +404,97 @@ router.post(
 );
 
 /**
+ * POST /api/songs/download-mp3
+ * Download audio from YouTube/TikTok link and return as a downloadable file
+ */
+router.post('/download-mp3', verifyAuth, async (req, res) => {
+  const ROUTE_TIMEOUT = 90000;
+  let responded = false;
+  const safeJson = (status, body) => {
+    if (!responded) { responded = true; res.status(status).json(body); }
+  };
+  const timer = setTimeout(() => {
+    console.error('[DOWNLOAD-MP3] TIMEOUT: 90s exceeded.');
+    safeJson(504, { error: 'O download demorou demais. Tente novamente.' });
+  }, ROUTE_TIMEOUT);
+
+  const tempFiles = [];
+  const cleanup = () => {
+    clearTimeout(timer);
+    tempFiles.forEach(f => { try { fs.unlinkSync(f); } catch { } });
+  };
+
+  try {
+    const url = req.body.url;
+    if (!url) {
+      cleanup();
+      return safeJson(400, { error: 'URL é obrigatória.' });
+    }
+
+    const urlCheck = validateMediaUrl(url);
+    if (!urlCheck.valid) {
+      cleanup();
+      return safeJson(400, { error: 'Link não suportado. Use YouTube ou TikTok.' });
+    }
+
+    const tmpId = `${req.userId}_dl_${Date.now()}`;
+    const rawPath = path.join(os.tmpdir(), `${tmpId}_raw`);
+    const mp3Path = path.join(os.tmpdir(), `${tmpId}.mp3`);
+    tempFiles.push(rawPath, mp3Path);
+
+    await runYtdlp([
+      '-f', 'bestaudio/best',
+      '-o', rawPath,
+      '--no-playlist',
+      '--force-ipv4',
+      '--no-warnings',
+      '--max-filesize', '25M',
+      '--', url,
+    ], 60000);
+
+    let actualRawPath = rawPath;
+    if (!fs.existsSync(rawPath)) {
+      const dir = os.tmpdir();
+      const match = fs.readdirSync(dir).find(f => f.startsWith(`${tmpId}_raw`));
+      if (match) {
+        actualRawPath = path.join(dir, match);
+        tempFiles.push(actualRawPath);
+      } else {
+        throw new Error('Falha ao extrair áudio.');
+      }
+    }
+
+    await new Promise((resolve, reject) => {
+      execFile(ffmpegPath, [
+        '-i', actualRawPath,
+        '-vn',
+        '-ar', '44100',
+        '-ac', '2',
+        '-b:a', '128k',
+        '-f', 'mp3',
+        '-y',
+        mp3Path
+      ], { timeout: 60000 }, (err) => {
+        if (err) reject(new Error('Falha na conversão do áudio.'));
+        else resolve();
+      });
+    });
+
+    if (!responded) {
+      responded = true;
+      clearTimeout(timer);
+      res.download(mp3Path, 'audio.mp3', (err) => {
+        cleanup();
+      });
+    }
+  } catch (err) {
+    cleanup();
+    console.error('[DOWNLOAD-MP3]', err.message);
+    safeJson(500, { error: 'Erro ao baixar áudio: ' + err.message });
+  }
+});
+
+/**
  * POST /api/songs/from-link
  * Import a song from a YouTube or TikTok link.
  *

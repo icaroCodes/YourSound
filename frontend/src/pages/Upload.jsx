@@ -148,6 +148,33 @@ export default function Upload() {
     }
   }
 
+  const handleDownload = async () => {
+    if (!audioUrl) {
+      setMessage({ type: 'error', text: 'Insira o link do áudio.' })
+      return
+    }
+    setLoading(true)
+    setMessage({ type: '', text: '' })
+    try {
+      const blob = await api.downloadMp3FromLink(audioUrl)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Audio_${Date.now()}.mp3`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      
+      setMessage({ type: 'success', text: 'Áudio baixado com sucesso!' })
+      setAudioUrl('')
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -161,7 +188,7 @@ export default function Upload() {
         className="mb-10"
       >
         <h1 className="text-3xl font-bold text-white tracking-tight">Enviar música</h1>
-        <p className="text-zinc-500 text-sm mt-1.5">Adicione faixas à sua biblioteca.</p>
+        <p className="text-zinc-500 text-sm mt-1.5">Adicione faixas à sua biblioteca ou baixe MP3 de links.</p>
       </motion.div>
 
       {/* Feedback */}
@@ -196,75 +223,97 @@ export default function Upload() {
           className="space-y-5"
         >
 
-          {/* ── Título ── */}
-          <Field label="Título da música">
-            <Input
-              type="text" required
-              value={title} onChange={e => setTitle(e.target.value)}
-              placeholder="Nome da faixa"
-            />
-          </Field>
-
-          {/* ── Artista ── */}
-          <Field label="Artista / Banda">
-            <Input
-              type="text" required
-              value={artist} onChange={e => setArtist(e.target.value)}
-              placeholder="Nome do artista"
-            />
-          </Field>
-
-          {/* ── Divisor ── */}
-          <motion.div variants={fadeUp} className="h-px bg-zinc-900 my-2" />
-
-          {/* ── Área de Áudio (Arquivo ou Link) ── */}
+          {/* ── Tabs: Adicionar ou Conversor ── */}
           <motion.div variants={fadeUp}>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-[11px] uppercase tracking-widest font-semibold text-zinc-500 px-0.5">
-                Áudio da Música
-              </label>
-              <div className="flex bg-zinc-900 rounded-full p-0.5">
+            <div className="flex bg-zinc-900/60 p-1 rounded-xl mb-4">
+              <button
+                type="button"
+                onClick={() => { setAudioMode('file'); setMessage({ type: '', text: '' }) }}
+                className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${
+                  audioMode === 'file' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                Adicionar à Biblioteca
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAudioMode('link'); setMessage({ type: '', text: '' }) }}
+                className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${
+                  audioMode === 'link' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                Conversor MP3 (Link)
+              </button>
+            </div>
+          </motion.div>
+
+          {audioMode === 'link' ? (
+            <motion.div variants={fadeIn} key="link-mode" className="space-y-5">
+              <Field label="Link da Música / Vídeo">
+                <Input
+                  type="url"
+                  value={audioUrl}
+                  onChange={e => setAudioUrl(e.target.value)}
+                  placeholder="Exemplo: https://tiktok.com/... ou https://youtube.com/..."
+                />
+              </Field>
+              <div className="pt-4">
                 <button
                   type="button"
-                  onClick={() => setAudioMode('file')}
-                  className={`px-3 py-1 rounded-full text-[10px] font-bold transition-colors ${
-                    audioMode === 'file' ? 'bg-[#1ED45E] text-black' : 'text-zinc-500 hover:text-white'
-                  }`}
+                  onClick={handleDownload}
+                  disabled={loading}
+                  className="w-full py-4 rounded-full bg-[#1ED45E] text-black font-extrabold text-sm flex items-center justify-center gap-2 shadow-xl shadow-[#1ED45E]/10 h-14"
                 >
-                  Arquivo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAudioMode('link')}
-                  className={`px-3 py-1 rounded-full text-[10px] font-bold transition-colors ${
-                    audioMode === 'link' ? 'bg-[#1ED45E] text-black' : 'text-zinc-500 hover:text-white'
-                  }`}
-                >
-                  Link YouTube/TikTok
+                  {loading ? (
+                    <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                  ) : 'Baixar Arquivo MP3'}
                 </button>
               </div>
-            </div>
-            
-            {audioMode === 'file' ? (
-              <>
+            </motion.div>
+          ) : (
+            <motion.div variants={fadeIn} key="file-mode" className="space-y-5">
+              {/* ── Título ── */}
+              <Field label="Título da música">
+                <Input
+                  type="text" required
+                  value={title} onChange={e => setTitle(e.target.value)}
+                  placeholder="Nome da faixa"
+                />
+              </Field>
+
+              {/* ── Artista ── */}
+              <Field label="Artista / Banda">
+                <Input
+                  type="text" required
+                  value={artist} onChange={e => setArtist(e.target.value)}
+                  placeholder="Nome do artista"
+                />
+              </Field>
+
+              <motion.div variants={fadeUp} className="h-px bg-zinc-900 my-2" />
+
+              {/* ── Área de Áudio (Arquivo) ── */}
+              <motion.div variants={fadeUp}>
+                <label className="block text-[11px] uppercase tracking-widest font-semibold text-zinc-500 mb-2 px-0.5">
+                  Arquivo de Áudio
+                </label>
                 <input
                   ref={audioInputRef}
                   type="file" accept="audio/*"
                   className="hidden"
                   onChange={e => handleAudioChange(e.target.files[0])}
                 />
-                <motion.div
+                <div
                   animate={{
                     borderColor: isDragging ? '#1ED45E' : audioFile ? 'rgba(30, 212, 94, 0.3)' : 'rgba(255,255,255,0.06)',
                     backgroundColor: isDragging ? 'rgba(30, 212, 94, 0.04)' : audioFile ? 'rgba(30, 212, 94, 0.03)' : 'rgba(255,255,255,0.015)',
                     scale: isDragging ? 1.01 : 1,
                   }}
-                  transition={{ duration: 0.18 }}
                   onClick={() => audioInputRef.current?.click()}
                   onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
                   onDragLeave={() => setIsDragging(false)}
                   onDrop={handleDrop}
-                  className="w-full min-h-[140px] rounded-xl border border-dashed flex flex-col items-center justify-center gap-3 cursor-pointer"
+                  className="w-full min-h-[140px] rounded-xl border border-dashed flex flex-col items-center justify-center gap-3 cursor-pointer transition-all"
                 >
                   <AnimatePresence mode="wait">
                     {audioFile ? (
@@ -281,149 +330,142 @@ export default function Upload() {
                       </motion.div>
                     )}
                   </AnimatePresence>
-                </motion.div>
-              </>
-            ) : (
-              <Input
-                type="url"
-                value={audioUrl}
-                onChange={e => setAudioUrl(e.target.value)}
-                placeholder="Exemplo: https://tiktok.com/... ou https://youtube.com/..."
-              />
-            )}
-          </motion.div>
+                </div>
+              </motion.div>
 
-          {/* ── Capa ── */}
-          <motion.div variants={fadeUp}>
-            <label className="block text-[11px] uppercase tracking-widest font-semibold text-zinc-500 mb-2 px-0.5">
-              Arte da Capa <span className="normal-case tracking-normal font-normal text-zinc-600">(opcional)</span>
-            </label>
-            <input
-              ref={coverInputRef}
-              type="file" accept="image/*" className="hidden"
-              onChange={e => handleCoverChange(e.target.files[0])}
-            />
-            <div
-              onClick={() => coverInputRef.current?.click()}
-              className="flex items-center gap-4 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 cursor-pointer transition-colors"
-            >
-              <div className="w-12 h-12 rounded bg-zinc-800 flex items-center justify-center shrink-0 overflow-hidden">
-                {coverPreview ? <img src={coverPreview} className="w-full h-full object-cover" /> : <ImageIcon size={18} className="text-zinc-600" />}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-zinc-300 truncate">{coverFile ? coverFile.name : 'Escolher imagem'}</p>
-              </div>
-              {coverFile && (
-                <button type="button" onClick={removeCover} className="p-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700">
-                  <X size={14} className="text-zinc-400" />
-                </button>
-              )}
-            </div>
-          </motion.div>
+              {/* ── Capa ── */}
+              <motion.div variants={fadeUp}>
+                <label className="block text-[11px] uppercase tracking-widest font-semibold text-zinc-500 mb-2 px-0.5">
+                  Arte da Capa <span className="normal-case tracking-normal font-normal text-zinc-600">(opcional)</span>
+                </label>
+                <input
+                  ref={coverInputRef}
+                  type="file" accept="image/*" className="hidden"
+                  onChange={e => handleCoverChange(e.target.files[0])}
+                />
+                <div
+                  onClick={() => coverInputRef.current?.click()}
+                  className="flex items-center gap-4 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 cursor-pointer transition-colors"
+                >
+                  <div className="w-12 h-12 rounded bg-zinc-800 flex items-center justify-center shrink-0 overflow-hidden">
+                    {coverPreview ? <img src={coverPreview} className="w-full h-full object-cover" /> : <ImageIcon size={18} className="text-zinc-600" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-zinc-300 truncate">{coverFile ? coverFile.name : 'Escolher imagem'}</p>
+                  </div>
+                  {coverFile && (
+                    <button type="button" onClick={removeCover} className="p-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700">
+                      <X size={14} className="text-zinc-400" />
+                    </button>
+                  )}
+                </div>
+              </motion.div>
 
-          <motion.div variants={fadeUp} className="h-px bg-zinc-900 my-2" />
+              <motion.div variants={fadeUp} className="h-px bg-zinc-900 my-2" />
 
-          {/* ── Legendas ── */}
-          <motion.div variants={fadeUp} className="space-y-4">
-            <label className="block text-[11px] uppercase tracking-widest font-semibold text-zinc-500 px-0.5">
-              Legendas
-            </label>
-            <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-900 rounded-2xl">
-              {[
-                { id: 'none', label: 'Automática', icon: <AlignLeft size={14} /> },
-                { id: 'manual', label: 'Manual', icon: <Type size={14} /> }
-              ].map(opt => (
+              {/* ── Legendas ── */}
+              <motion.div variants={fadeUp} className="space-y-4">
+                <label className="block text-[11px] uppercase tracking-widest font-semibold text-zinc-500 px-0.5">
+                  Legendas
+                </label>
+                <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-900 rounded-2xl">
+                  {[
+                    { id: 'none', label: 'Automática', icon: <AlignLeft size={14} /> },
+                    { id: 'manual', label: 'Manual', icon: <Type size={14} /> }
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setSubtitleMode(opt.id)}
+                      className={`flex flex-col items-center gap-1.5 py-3 rounded-xl text-[11px] font-bold transition-all ${
+                        subtitleMode === opt.id 
+                          ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' 
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      {opt.icon}
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
+                <AnimatePresence mode="wait">
+                  {subtitleMode === 'manual' && (
+                    <motion.div key="manual" variants={fadeIn} initial="hidden" animate="show" exit="exit" className="space-y-3">
+                      <textarea
+                        value={manualText}
+                        onChange={e => setManualText(e.target.value)}
+                        placeholder="Cole a letra da música aqui..."
+                        className="w-full h-32 px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-[#1ED45E] transition-all resize-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const parsedLines = manualText.split('\n').map(l => l.trim()).filter(Boolean).map((text, i) => {
+                            const match = text.match(/^\[?(?:(\d{1,2}):)?(\d+)(?:\.(\d+))?\]?\s*(.*)/);
+                            if (match) {
+                              const min = match[1] ? parseInt(match[1]) : 0;
+                              const sec = parseInt(match[2]);
+                              const msStr = match[3] || '0';
+                              const ms = parseInt(msStr) / Math.pow(10, msStr.length);
+                              return { time: min * 60 + sec + ms, text: (match[4] || '').trim() };
+                            }
+                            return { time: i * 3.5, text: text.trim() };
+                          })
+                          setSubtitleData(parsedLines)
+                          setMessage({ type: 'success', text: 'Letra processada!' })
+                        }}
+                        className="w-full py-2.5 bg-[#1ED45E]/10 text-[#1ED45E] rounded-xl text-xs font-bold hover:bg-[#1ED45E]/20 transition-colors"
+                      >
+                        Confirmar Letra
+                      </button>
+                    </motion.div>
+                  )}
+
+                  {subtitleMode === 'none' && (
+                    <motion.div key="none" variants={fadeIn} initial="hidden" animate="show" exit="exit" className="p-4 bg-zinc-900/50 rounded-xl border border-zinc-800 text-center">
+                      <p className="text-xs text-zinc-500 italic">Busca automática via LRCLIB ativada.</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+
+              <motion.div variants={fadeUp} className="h-px bg-zinc-900 my-2" />
+
+              {/* ── Visibilidade ── */}
+              <motion.div variants={fadeUp}>
                 <button
-                  key={opt.id}
                   type="button"
-                  onClick={() => setSubtitleMode(opt.id)}
-                  className={`flex flex-col items-center gap-1.5 py-3 rounded-xl text-[11px] font-bold transition-all ${
-                    subtitleMode === opt.id 
-                      ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' 
-                      : 'text-zinc-500 hover:text-zinc-300'
+                  onClick={() => setIsPublic(p => !p)}
+                  className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl border text-left transition-all ${
+                    isPublic ? 'bg-[#1ED45E]/5 border-[#1ED45E]/20' : 'bg-zinc-900/50 border-zinc-800'
                   }`}
                 >
-                  {opt.icon}
-                  {opt.label}
+                  <div className={`w-10 h-6 rounded-full relative transition-colors ${isPublic ? 'bg-[#1ED45E]' : 'bg-zinc-800'}`}>
+                    <motion.div animate={{ x: isPublic ? 18 : 2 }} className="w-4 h-4 rounded-full bg-white absolute top-1" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-white flex items-center gap-2">
+                      {isPublic ? <><Globe size={13} className="text-[#1ED45E]" /> Público</> : <><Lock size={13} className="text-zinc-500" /> Privado</>}
+                    </p>
+                  </div>
                 </button>
-              ))}
-            </div>
+              </motion.div>
 
-            <AnimatePresence mode="wait">
-              {subtitleMode === 'manual' && (
-                <motion.div key="manual" variants={fadeIn} initial="hidden" animate="show" exit="exit" className="space-y-3">
-                  <textarea
-                    value={manualText}
-                    onChange={e => setManualText(e.target.value)}
-                    placeholder="Cole a letra da música aqui..."
-                    className="w-full h-32 px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-[#1ED45E] transition-all resize-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const parsedLines = manualText.split('\n').map(l => l.trim()).filter(Boolean).map((text, i) => {
-                        const match = text.match(/^\[?(?:(\d{1,2}):)?(\d+)(?:\.(\d+))?\]?\s*(.*)/);
-                        if (match) {
-                          const min = match[1] ? parseInt(match[1]) : 0;
-                          const sec = parseInt(match[2]);
-                          const msStr = match[3] || '0';
-                          const ms = parseInt(msStr) / Math.pow(10, msStr.length);
-                          return { time: min * 60 + sec + ms, text: (match[4] || '').trim() };
-                        }
-                        return { time: i * 3.5, text: text.trim() };
-                      })
-                      setSubtitleData(parsedLines)
-                      setMessage({ type: 'success', text: 'Letra processada!' })
-                    }}
-                    className="w-full py-2.5 bg-[#1ED45E]/10 text-[#1ED45E] rounded-xl text-xs font-bold hover:bg-[#1ED45E]/20 transition-colors"
-                  >
-                    Confirmar Letra
-                  </button>
-                </motion.div>
-              )}
-
-              {subtitleMode === 'none' && (
-                <motion.div key="none" variants={fadeIn} initial="hidden" animate="show" exit="exit" className="p-4 bg-zinc-900/50 rounded-xl border border-zinc-800 text-center">
-                  <p className="text-xs text-zinc-500 italic">Busca automática via LRCLIB ativada.</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-
-          <motion.div variants={fadeUp} className="h-px bg-zinc-900 my-2" />
-
-          {/* ── Visibilidade ── */}
-          <motion.div variants={fadeUp}>
-            <button
-              type="button"
-              onClick={() => setIsPublic(p => !p)}
-              className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl border text-left transition-all ${
-                isPublic ? 'bg-[#1ED45E]/5 border-[#1ED45E]/20' : 'bg-zinc-900/50 border-zinc-800'
-              }`}
-            >
-              <div className={`w-10 h-6 rounded-full relative transition-colors ${isPublic ? 'bg-[#1ED45E]' : 'bg-zinc-800'}`}>
-                <motion.div animate={{ x: isPublic ? 18 : 2 }} className="w-4 h-4 rounded-full bg-white absolute top-1" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-bold text-white flex items-center gap-2">
-                  {isPublic ? <><Globe size={13} className="text-[#1ED45E]" /> Público</> : <><Lock size={13} className="text-zinc-500" /> Privado</>}
-                </p>
-              </div>
-            </button>
-          </motion.div>
-
-          {/* ── Submit ── */}
-          <motion.div variants={fadeUp} className="pt-4">
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-4 rounded-full bg-[#1ED45E] text-black font-extrabold text-sm flex items-center justify-center gap-2 shadow-xl shadow-[#1ED45E]/10 h-14"
-            >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
-              ) : 'Enviar música'}
-            </button>
-          </motion.div>
+              {/* ── Submit ── */}
+              <motion.div variants={fadeUp} className="pt-4">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-4 rounded-full bg-[#1ED45E] text-black font-extrabold text-sm flex items-center justify-center gap-2 shadow-xl shadow-[#1ED45E]/10 h-14"
+                >
+                  {loading ? (
+                    <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                  ) : 'Enviar música'}
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
 
         </motion.div>
       </form>

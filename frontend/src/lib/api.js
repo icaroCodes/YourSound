@@ -126,6 +126,27 @@ export const api = {
 
 
 
+  async downloadMp3FromLink(url) {
+    const headers = getAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/songs/download-mp3`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+    
+    if (res.status === 401) {
+      useAuthStore.getState().signOut();
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+    
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || `Erro ${res.status}`);
+    }
+    
+    return res.blob();
+  },
+
   // ── Playlists ──────────────────────────────
   async getPlaylists() {
     const headers = getAuthHeaders();
