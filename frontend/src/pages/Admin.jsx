@@ -23,9 +23,7 @@ export default function Admin() {
   const [editTitle, setEditTitle] = useState('')
   const [editArtist, setEditArtist] = useState('')
   const [editSubtitleMode, setEditSubtitleMode] = useState('none')
-  const [editSubtitleData, setEditSubtitleData] = useState([])
   const [editSubtitleVideoUrl, setEditSubtitleVideoUrl] = useState('')
-  const [editManualText, setEditManualText] = useState('')
   const [savingAction, setSavingAction] = useState(false)
 
   // Feedback Messages
@@ -86,10 +84,8 @@ export default function Admin() {
     setEditSong(song)
     setEditTitle(song.title)
     setEditArtist(song.artist)
-    setEditSubtitleMode(song.subtitle_mode || 'none')
-    setEditSubtitleData(song.subtitle_data || [])
+    setEditSubtitleMode(song.subtitle_mode === 'video' ? 'video' : 'none')
     setEditSubtitleVideoUrl(song.subtitle_video_url || '')
-    setEditManualText(song.subtitle_data ? song.subtitle_data.map(l => l.text).join('\n') : '')
   }
 
   const handleSaveEdit = async () => {
@@ -97,11 +93,11 @@ export default function Admin() {
 
     setSavingAction(true)
     try {
-      const data = { 
-        title: editTitle, 
+      const data = {
+        title: editTitle,
         artist: editArtist,
         subtitle_mode: editSubtitleMode,
-        subtitle_data: editSubtitleMode === 'manual' ? editSubtitleData : null,
+        subtitle_data: null,
         subtitle_video_url: editSubtitleMode === 'video' ? editSubtitleVideoUrl : null
       }
       await api.editAdminSong(editSong.id, data)
@@ -271,30 +267,8 @@ export default function Admin() {
                     className="w-full bg-black/40 border border-white/10 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   >
                     <option value="none">Automática (LRCLIB)</option>
-                    <option value="manual">Manual Sincronizada</option>
                     <option value="video">Vídeo de Fundo</option>
                   </select>
-
-                  {editSubtitleMode === 'manual' && (
-                    <div className="space-y-2">
-                      <textarea
-                        value={editManualText}
-                        onChange={e => setEditManualText(e.target.value)}
-                        placeholder="Cole a letra..."
-                        className="w-full h-24 bg-black/40 border border-white/10 rounded-md py-2 px-3 text-white text-xs resize-none"
-                      />
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          const lines = editManualText.split('\n').filter(l => l.trim()).map((t, i) => ({ time: i * 3.5, text: t.trim() }))
-                          setEditSubtitleData(lines)
-                        }}
-                        className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase transition"
-                      >
-                        Processar Letras
-                      </button>
-                    </div>
-                  )}
 
                   {editSubtitleMode === 'video' && (
                     <input

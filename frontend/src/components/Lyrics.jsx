@@ -33,13 +33,6 @@ export default function Lyrics({ centered = false }) {
     setActiveIndex(-1)
     lastScrolledIndex.current = -1
 
-    // Manual lyrics support
-    if (currentSong.subtitle_mode === 'manual' && currentSong.subtitle_data) {
-      setLines(currentSong.subtitle_data)
-      setLoading(false)
-      return
-    }
-
     const doFetch = (audioDuration) => {
       if (cancelled) return
 
@@ -81,7 +74,7 @@ export default function Lyrics({ centered = false }) {
     }
 
     return () => { cancelled = true }
-  }, [currentSong?.id, currentSong?.subtitle_mode, currentSong?.subtitle_data])
+  }, [currentSong?.id])
 
   // RAF loop: read audio.currentTime directly for frame-accurate sync
   const tick = useCallback(() => {
@@ -92,8 +85,7 @@ export default function Lyrics({ centered = false }) {
       return
     }
 
-    const delay = currentSong?.subtitle_mode === 'manual' ? 0 : 7.5
-    const t = audio.currentTime - delay
+    const t = audio.currentTime - 7.5
     let idx = -1
     for (let i = 0; i < syncedLines.length; i++) {
       if (t >= syncedLines[i].time) idx = i
@@ -102,7 +94,7 @@ export default function Lyrics({ centered = false }) {
 
     setActiveIndex(prev => prev === idx ? prev : idx)
     rafRef.current = requestAnimationFrame(tick)
-  }, [currentSong?.subtitle_mode])
+  }, [])
 
   useEffect(() => {
     rafRef.current = requestAnimationFrame(tick)

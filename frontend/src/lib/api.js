@@ -80,9 +80,9 @@ export const api = {
     return handleResponse(res);
   },
 
-  async uploadSong({ title, artist, isPublic, audioFile, coverFile, subtitleMode, subtitleData }) {
+  async uploadSong({ title, artist, isPublic, audioFile, coverFile, subtitleMode, subtitleVideoFile }) {
     const headers = getAuthHeaders();
-    
+
     const formData = new FormData();
     formData.append('title', title);
     formData.append('artist', artist);
@@ -92,7 +92,9 @@ export const api = {
       formData.append('cover', coverFile);
     }
     if (subtitleMode) formData.append('subtitle_mode', subtitleMode);
-    if (subtitleData) formData.append('subtitle_data', JSON.stringify(subtitleData));
+    if (subtitleMode === 'video' && subtitleVideoFile) {
+      formData.append('subtitle_video', subtitleVideoFile);
+    }
 
     const res = await fetch(`${API_BASE}/api/songs/upload`, {
       method: 'POST',
@@ -102,9 +104,9 @@ export const api = {
     return handleResponse(res);
   },
 
-  async importSongFromLink({ title, artist, isPublic, url, coverFile, subtitleMode, subtitleData }) {
+  async importSongFromLink({ title, artist, isPublic, url, coverFile, subtitleMode, subtitleVideoFile }) {
     const headers = getAuthHeaders();
-    
+
     const formData = new FormData();
     formData.append('title', title);
     formData.append('artist', artist);
@@ -114,7 +116,9 @@ export const api = {
       formData.append('cover', coverFile);
     }
     if (subtitleMode) formData.append('subtitle_mode', subtitleMode);
-    if (subtitleData) formData.append('subtitle_data', JSON.stringify(subtitleData));
+    if (subtitleMode === 'video' && subtitleVideoFile) {
+      formData.append('subtitle_video', subtitleVideoFile);
+    }
 
     const res = await fetch(`${API_BASE}/api/songs/from-link`, {
       method: 'POST',

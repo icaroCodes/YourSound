@@ -47,10 +47,7 @@ export default function LyricsOverlay() {
     setActiveIndex(-1)
     lastScrolledIndex.current = -1
 
-    if (isVideoMode || currentSong.subtitle_mode === 'manual') {
-      if (currentSong.subtitle_mode === 'manual' && currentSong.subtitle_data) {
-        setLines(currentSong.subtitle_data)
-      }
+    if (isVideoMode) {
       setLoading(false)
       return
     }
@@ -91,7 +88,7 @@ export default function LyricsOverlay() {
       doFetch(currentSong.duration || 0)
     }
     return () => { cancelled = true }
-  }, [currentSong?.id, currentSong?.subtitle_mode])
+  }, [currentSong?.id, isVideoMode])
 
   // ── 2. Set video URL (proxy supports range requests, browser can seek natively) ──
   const token = useAuthStore(state => state.session?.access_token)
@@ -210,8 +207,7 @@ export default function LyricsOverlay() {
       lyricsRafRef.current = requestAnimationFrame(tick)
       return
     }
-    const delay = currentSong?.subtitle_mode === 'manual' ? 0 : 7.5
-    const t = audio.currentTime - delay
+    const t = audio.currentTime - 7.5
     let idx = -1
     for (let i = 0; i < syncedLines.length; i++) {
       if (t >= syncedLines[i].time) idx = i
@@ -219,7 +215,7 @@ export default function LyricsOverlay() {
     }
     setActiveIndex(prev => prev === idx ? prev : idx)
     lyricsRafRef.current = requestAnimationFrame(tick)
-  }, [currentSong?.subtitle_mode])
+  }, [])
 
   useEffect(() => {
     lyricsRafRef.current = requestAnimationFrame(tick)
@@ -381,13 +377,6 @@ export default function LyricsOverlay() {
         </div>
       </div>
 
-      {currentSong?.subtitle_mode === 'manual' && (
-        <div className="relative z-20 p-4 flex justify-center shrink-0">
-          <div className="px-4 py-1.5 bg-red-500/20 rounded-full border border-red-500/30 backdrop-blur-sm">
-            <span className="text-red-400 text-[10px] uppercase font-bold tracking-widest">Legenda Manual</span>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

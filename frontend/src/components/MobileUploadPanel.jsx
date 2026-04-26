@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Music, CloudUpload, CheckCircle2, AlertCircle, Loader2, ImageIcon, Globe, Lock, AlignLeft, Type } from 'lucide-react'
+import { X, Music, CloudUpload, CheckCircle2, AlertCircle, Loader2, ImageIcon, Globe, Lock, AlignLeft, Film } from 'lucide-react'
 import { api } from '../lib/api'
 
 export default function MobileUploadPanel({ isOpen, onClose }) {
@@ -14,9 +14,8 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
   const [audioMode, setAudioMode] = useState('file') // 'file', 'link'
   const [audioUrl, setAudioUrl] = useState('')
   const [isPublic, setIsPublic] = useState(false)
-  const [subtitleMode, setSubtitleMode] = useState('none') // 'none', 'manual'
-  const [subtitleData, setSubtitleData] = useState([])
-  const [manualText, setManualText] = useState('')
+  const [subtitleMode, setSubtitleMode] = useState('none') // 'none', 'video'
+  const [subtitleVideoFile, setSubtitleVideoFile] = useState(null)
   const [coverFile, setCoverFile] = useState(null)
   const [coverPreview, setCoverPreview] = useState(null)
 
@@ -33,8 +32,7 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
         setAudioUrl('')
         setIsPublic(false)
         setSubtitleMode('none')
-        setSubtitleData([])
-        setManualText('')
+        setSubtitleVideoFile(null)
         setCoverFile(null)
         setCoverPreview(null)
       }, 300)
@@ -77,7 +75,10 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
     try {
       if (audioMode === 'file' && !file) throw new Error('Selecione um arquivo de áudio')
       if (!title || !artist) throw new Error('Preencha o título e o artista')
-      
+      if (subtitleMode === 'video' && !subtitleVideoFile) {
+        throw new Error('Envie o arquivo de vídeo para a legenda')
+      }
+
       await api.uploadSong({
         title,
         artist,
@@ -85,7 +86,7 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
         audioFile: file,
         coverFile,
         subtitleMode,
-        subtitleData: subtitleMode === 'manual' ? subtitleData : null,
+        subtitleVideoFile: subtitleMode === 'video' ? subtitleVideoFile : null,
       })
 
       setSuccess(true)
@@ -268,15 +269,15 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
                     <div className="grid grid-cols-2 gap-2">
                        {[
                          { id: 'none', label: 'Auto', icon: <AlignLeft size={14} /> },
-                         { id: 'manual', label: 'Manual', icon: <Type size={14} /> }
+                         { id: 'video', label: 'Vídeo', icon: <Film size={14} /> }
                        ].map(opt => (
                          <button
                            key={opt.id}
                            type="button"
                            onClick={() => setSubtitleMode(opt.id)}
                            className={`flex flex-col items-center gap-1.5 py-3 rounded-xl text-[10px] font-black transition-all border ${
-                             subtitleMode === opt.id 
-                               ? 'bg-white text-black border-white' 
+                             subtitleMode === opt.id
+                               ? 'bg-white text-black border-white'
                                : 'bg-white/5 text-zinc-500 border-white/5'
                            }`}
                          >
@@ -286,36 +287,34 @@ export default function MobileUploadPanel({ isOpen, onClose }) {
                        ))}
                     </div>
 
-                    {subtitleMode === 'manual' && (
-                      <div className="space-y-2">
-                        <textarea
-                          value={manualText}
-                          onChange={e => setManualText(e.target.value)}
-                          placeholder="Cole a letra da música aqui..."
-                          className="w-full h-24 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:ring-1 focus:ring-spotify-green outline-none resize-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const parsedLines = manualText.split('\n').map(l => l.trim()).filter(Boolean).map((text, i) => {
-                              const match = text.match(/^\[?(?:(\d{1,2}):)?(\d+)(?:\.(\d+))?\]?\s*(.*)/);
-                              if (match) {
-                                const min = match[1] ? parseInt(match[1]) : 0;
-                                const sec = parseInt(match[2]);
-                                const msStr = match[3] || '0';
-                                const ms = parseInt(msStr) / Math.pow(10, msStr.length);
-                                return { time: min * 60 + sec + ms, text: (match[4] || '').trim() };
-                              }
-                              return { time: i * 3.5, text: text.trim() };
-                            });
-                            setSubtitleData(parsedLines)
-                            setError('') // Clear error if any
+                    {subtitleMode === 'video' && (
+                      <label className="flex flex-col items-center justify-center w-full aspect-[4/1] bg-white/5 border-2 border-dashed border-white/10 rounded-xl cursor-pointer hover:bg-white/10 transition-colors">
+                        <div className="flex flex-col items-center justify-center">
+                          {subtitleVideoFile ? (
+                            <p className="text-spotify-green font-bold text-sm truncate max-w-[200px]">{subtitleVideoFile.name}</p>
+                          ) : (
+                            <>
+                              <Film size={20} className="text-zinc-500 mb-1" />
+                              <p className="text-[10px] text-zinc-500 font-bold">Selecionar vídeo (máx. 50MB)</p>
+                            </>
+                          )}
+                        </div>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="video/*"
+                          onChange={e => {
+                            const f = e.target.files?.[0]
+                            if (!f) return
+                            if (f.size > 50 * 1024 * 1024) {
+                              setError('Vídeo excede 50MB.')
+                              return
+                            }
+                            setSubtitleVideoFile(f)
+                            setError('')
                           }}
-                          className="w-full py-2 bg-white/10 text-white rounded-lg text-xs font-bold"
-                        >
-                          Confirmar Letra
-                        </button>
-                      </div>
+                        />
+                      </label>
                     )}
                   </div>
 

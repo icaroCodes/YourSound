@@ -102,7 +102,7 @@ router.patch('/songs/:id', verifyAuth, adminOnly, async (req, res) => {
 router.patch('/songs/:id/edit', verifyAuth, adminOnly, async (req, res) => {
   try {
     const songId = req.params.id;
-    const { title, artist, subtitle_mode, subtitle_data, subtitle_video_url } = req.body;
+    const { title, artist, subtitle_mode, subtitle_video_url } = req.body;
 
     if (!isValidUUID(songId)) {
       return res.status(400).json({ error: 'ID de música inválido.' });
@@ -113,20 +113,12 @@ router.patch('/songs/:id/edit', verifyAuth, adminOnly, async (req, res) => {
     if (artist) updates.artist = sanitizeString(artist, 100);
 
     if (subtitle_mode !== undefined) {
-      if (!['none', 'manual', 'video'].includes(subtitle_mode)) {
+      if (!['none', 'video'].includes(subtitle_mode)) {
         return res.status(400).json({ error: 'subtitle_mode inválido.' });
       }
       updates.subtitle_mode = subtitle_mode;
-      if (subtitle_mode === 'manual') {
-        updates.subtitle_data = subtitle_data || null;
-        updates.subtitle_video_url = null;
-      } else if (subtitle_mode === 'video') {
-        updates.subtitle_video_url = subtitle_video_url || null;
-        updates.subtitle_data = null;
-      } else {
-        updates.subtitle_data = null;
-        updates.subtitle_video_url = null;
-      }
+      updates.subtitle_data = null;
+      updates.subtitle_video_url = subtitle_mode === 'video' ? (subtitle_video_url || null) : null;
     }
 
     if (Object.keys(updates).length === 0) {

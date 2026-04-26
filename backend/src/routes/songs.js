@@ -67,10 +67,14 @@ function runYtdlp(args, timeoutMs = 60000) {
   });
 }
 
-// Multer config — files go to memory, NEVER to disk
+// Multer config — files go to memory, NEVER to disk.
+// fileSize aqui é o LIMITE GLOBAL para QUALQUER campo (audio, cover ou
+// subtitle_video). Por isso usamos 50MB (vídeo de legenda); o handler
+// abaixo aplica os limites menores específicos de cada campo.
+const MAX_SUBTITLE_VIDEO_SIZE = 50 * 1024 * 1024;
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_AUDIO_SIZE }
+  limits: { fileSize: MAX_SUBTITLE_VIDEO_SIZE }
 });
 
 router.get('/ping', (req, res) => res.send('pong'));
@@ -216,17 +220,8 @@ router.post(
       const title = sanitizeString(req.body.title, 100);
       const artist = sanitizeString(req.body.artist, 100);
       const isPublic = req.body.is_public === 'true';
-      const subtitleMode = req.body.subtitle_mode || 'none';
+      const subtitleMode = ['none', 'video'].includes(req.body.subtitle_mode) ? req.body.subtitle_mode : 'none';
       let subtitleVideoUrl = req.body.subtitle_video_url || null;
-      let subtitleData = null;
-
-      try {
-        if (req.body.subtitle_data) {
-          subtitleData = JSON.parse(req.body.subtitle_data);
-        }
-      } catch (e) {
-        console.error('Error parsing subtitle_data:', e);
-      }
 
       // --- Validation ---
       if (!title || !artist) {
@@ -306,15 +301,18 @@ router.post(
       // --- Upload Subtitle Video File (optional) ---
       if (req.files?.subtitle_video?.[0]) {
         const videoFile = req.files.subtitle_video[0];
+        if (!videoFile.mimetype?.startsWith('video/')) {
+          return res.status(400).json({ error: 'Arquivo de legenda deve ser um vídeo.' });
+        }
         if (videoFile.size > 50 * 1024 * 1024) {
           return res.status(400).json({ error: 'Vídeo de legenda excede 50MB.' });
         }
-        
+
         const cleanVideoName = videoFile.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '');
         const videoPath = `${req.userId}/${Date.now()}_${cleanVideoName}`;
 
         const { error: videoUploadError } = await supabase.storage
-          .from('songs') // Resusing the songs bucket, or create a 'videos' bucket. Letting it go to songs.
+          .from('songs')
           .upload(videoPath, videoFile.buffer, {
             contentType: videoFile.mimetype,
             upsert: false
@@ -325,7 +323,7 @@ router.post(
         const { data: { publicUrl: vUrl } } = supabase.storage
           .from('songs')
           .getPublicUrl(videoPath);
-        
+
         subtitleVideoUrl = vUrl;
       } else if (subtitleMode === 'video' && req.body.subtitle_link_mode === 'download' && subtitleVideoUrl) {
         // --- Download Subtitle Video Linked via yt-dlp ---
@@ -380,7 +378,7 @@ router.post(
           is_public: isPublic,
           status: isPublic ? 'pending' : 'approved',
           subtitle_mode: subtitleMode,
-          subtitle_data: subtitleData,
+          subtitle_data: null,
           subtitle_video_url: subtitleVideoUrl,
           ...(duration != null ? { duration } : {})
         })
@@ -397,8 +395,8 @@ router.post(
       });
 
     } catch (err) {
-      console.error('[POST /songs/upload]', err.message);
-      res.status(500).json({ error: 'Erro ao fazer upload. Tente novamente.' });
+      console.error('[POST /songs/upload]', err.message, err.stack);
+      res.status(500).json({ error: `Erro ao fazer upload: ${err.message}` });
     }
   }
 );
@@ -448,18 +446,9 @@ router.post(
       const artist = sanitizeString(req.body.artist, 100);
       const isPublic = req.body.is_public === 'true';
       const url = req.body.url;
-      const subtitleMode = req.body.subtitle_mode || 'none';
+      const subtitleMode = ['none', 'video'].includes(req.body.subtitle_mode) ? req.body.subtitle_mode : 'none';
       let subtitleVideoUrl = req.body.subtitle_video_url || null;
       const subtitleLinkMode = req.body.subtitle_link_mode || 'stream';
-      let subtitleData = null;
-
-      try {
-        if (req.body.subtitle_data) {
-          subtitleData = JSON.parse(req.body.subtitle_data);
-        }
-      } catch (e) {
-        console.error('Error parsing subtitle_data:', e);
-      }
 
       if (!title || !artist || !url) {
         cleanup();
@@ -581,6 +570,7 @@ router.post(
       if (req.files?.subtitle_video?.[0]) {
         console.log('[FROM-LINK] Uploading subtitle video file...');
         const videoFile = req.files.subtitle_video[0];
+        if (!videoFile.mimetype?.startsWith('video/')) throw new Error('Arquivo de legenda deve ser um vídeo.');
         if (videoFile.size > 50 * 1024 * 1024) throw new Error('Vídeo de legenda excede 50MB.');
         
         const cleanVideoName = videoFile.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '');
@@ -639,7 +629,7 @@ router.post(
           is_public: isPublic,
           status: isPublic ? 'pending' : 'approved',
           subtitle_mode: subtitleMode,
-          subtitle_data: subtitleData,
+          subtitle_data: null,
           subtitle_video_url: subtitleVideoUrl,
           ...(duration != null ? { duration } : {})
         })
@@ -671,31 +661,21 @@ router.post(
 router.patch('/:id/subtitle', verifyAuth, async (req, res) => {
   try {
     const songId = req.params.id;
-    const { subtitle_mode, subtitle_data, subtitle_video_url } = req.body;
+    const { subtitle_mode, subtitle_video_url } = req.body;
 
-    if (!['none', 'manual', 'video'].includes(subtitle_mode)) {
-      return res.status(400).json({ error: 'subtitle_mode inválido. Use "none", "manual" ou "video".' });
-    }
-
-    if (subtitle_mode === 'manual' && (!subtitle_data || !Array.isArray(subtitle_data) || subtitle_data.length === 0)) {
-      return res.status(400).json({ error: 'subtitle_data é obrigatório para modo manual.' });
+    if (!['none', 'video'].includes(subtitle_mode)) {
+      return res.status(400).json({ error: 'subtitle_mode inválido. Use "none" ou "video".' });
     }
 
     if (subtitle_mode === 'video' && !subtitle_video_url) {
       return res.status(400).json({ error: 'subtitle_video_url é obrigatório para modo vídeo.' });
     }
 
-    const updates = { subtitle_mode };
-    if (subtitle_mode === 'manual') {
-      updates.subtitle_data = subtitle_data;
-      updates.subtitle_video_url = null;
-    } else if (subtitle_mode === 'video') {
-      updates.subtitle_video_url = subtitle_video_url;
-      updates.subtitle_data = null;
-    } else {
-      updates.subtitle_data = null;
-      updates.subtitle_video_url = null;
-    }
+    const updates = {
+      subtitle_mode,
+      subtitle_data: null,
+      subtitle_video_url: subtitle_mode === 'video' ? subtitle_video_url : null,
+    };
 
     const { data, error } = await supabase
       .from('songs')

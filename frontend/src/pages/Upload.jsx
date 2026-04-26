@@ -5,7 +5,7 @@ import { api } from '../lib/api'
 import {
   Upload as UploadIcon, Music4, ImageIcon, X,
   AlertCircle, CheckCircle2, Globe, Lock,
-  Type, AlignLeft
+  Film, AlignLeft
 } from 'lucide-react'
 
 // ─── Animation variants ───────────────────────────────────────────────────────
@@ -65,9 +65,8 @@ export default function Upload() {
   const [isDragging, setIsDragging] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
   
-  const [subtitleMode, setSubtitleMode] = useState('none') // 'none', 'manual'
-  const [subtitleData, setSubtitleData] = useState([])
-  const [manualText, setManualText] = useState('')
+  const [subtitleMode, setSubtitleMode] = useState('none') // 'none', 'video'
+  const [subtitleVideoFile, setSubtitleVideoFile] = useState(null)
 
   const audioInputRef = useRef(null)
   const coverInputRef = useRef(null)
@@ -119,18 +118,21 @@ export default function Upload() {
     setMessage({ type: '', text: '' })
 
     try {
+      if (subtitleMode === 'video' && !subtitleVideoFile) {
+        throw new Error('Envie o arquivo de vídeo para a legenda.')
+      }
       let result;
       if (audioMode === 'link') {
         result = await api.importSongFromLink({
           title, artist, isPublic, url: audioUrl, coverFile,
           subtitleMode,
-          subtitleData: subtitleMode === 'manual' ? subtitleData : null,
+          subtitleVideoFile: subtitleMode === 'video' ? subtitleVideoFile : null,
         })
       } else {
         result = await api.uploadSong({
           title, artist, isPublic, audioFile, coverFile,
           subtitleMode,
-          subtitleData: subtitleMode === 'manual' ? subtitleData : null,
+          subtitleVideoFile: subtitleMode === 'video' ? subtitleVideoFile : null,
         })
       }
 
@@ -138,7 +140,7 @@ export default function Upload() {
       setTitle(''); setArtist(''); setIsPublic(false)
       setAudioFile(null); setCoverFile(null); setCoverPreview(null)
       setAudioUrl('')
-      setSubtitleMode('none'); setSubtitleData([]); setManualText('')
+      setSubtitleMode('none'); setSubtitleVideoFile(null)
       if (audioInputRef.current) audioInputRef.current.value = ''
       if (coverInputRef.current) coverInputRef.current.value = ''
     } catch (err) {
@@ -371,15 +373,15 @@ export default function Upload() {
                 <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-900 rounded-2xl">
                   {[
                     { id: 'none', label: 'Automática', icon: <AlignLeft size={14} /> },
-                    { id: 'manual', label: 'Manual', icon: <Type size={14} /> }
+                    { id: 'video', label: 'Vídeo', icon: <Film size={14} /> }
                   ].map(opt => (
                     <button
                       key={opt.id}
                       type="button"
                       onClick={() => setSubtitleMode(opt.id)}
                       className={`flex flex-col items-center gap-1.5 py-3 rounded-xl text-[11px] font-bold transition-all ${
-                        subtitleMode === opt.id 
-                          ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700' 
+                        subtitleMode === opt.id
+                          ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700'
                           : 'text-zinc-500 hover:text-zinc-300'
                       }`}
                     >
@@ -390,35 +392,34 @@ export default function Upload() {
                 </div>
 
                 <AnimatePresence mode="wait">
-                  {subtitleMode === 'manual' && (
-                    <motion.div key="manual" variants={fadeIn} initial="hidden" animate="show" exit="exit" className="space-y-3">
-                      <textarea
-                        value={manualText}
-                        onChange={e => setManualText(e.target.value)}
-                        placeholder="Cole a letra da música aqui..."
-                        className="w-full h-32 px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-sm focus:outline-none focus:border-[#1ED45E] transition-all resize-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const parsedLines = manualText.split('\n').map(l => l.trim()).filter(Boolean).map((text, i) => {
-                            const match = text.match(/^\[?(?:(\d{1,2}):)?(\d+)(?:\.(\d+))?\]?\s*(.*)/);
-                            if (match) {
-                              const min = match[1] ? parseInt(match[1]) : 0;
-                              const sec = parseInt(match[2]);
-                              const msStr = match[3] || '0';
-                              const ms = parseInt(msStr) / Math.pow(10, msStr.length);
-                              return { time: min * 60 + sec + ms, text: (match[4] || '').trim() };
+                  {subtitleMode === 'video' && (
+                    <motion.div key="video" variants={fadeIn} initial="hidden" animate="show" exit="exit" className="space-y-2">
+                      <label className="flex items-center gap-4 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 cursor-pointer hover:bg-zinc-800/50 transition-colors">
+                        <div className="w-12 h-12 rounded bg-zinc-800 flex items-center justify-center shrink-0">
+                          <Film size={18} className="text-zinc-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-zinc-300 truncate">
+                            {subtitleVideoFile ? subtitleVideoFile.name : 'Selecionar vídeo'}
+                          </p>
+                          <p className="text-[10px] text-zinc-500">Máximo 50MB · usado como legenda da música</p>
+                        </div>
+                        <input
+                          type="file"
+                          accept="video/*"
+                          className="hidden"
+                          onChange={e => {
+                            const f = e.target.files?.[0]
+                            if (!f) return
+                            if (f.size > 50 * 1024 * 1024) {
+                              setMessage({ type: 'error', text: 'Vídeo excede 50MB.' })
+                              return
                             }
-                            return { time: i * 3.5, text: text.trim() };
-                          })
-                          setSubtitleData(parsedLines)
-                          setMessage({ type: 'success', text: 'Letra processada!' })
-                        }}
-                        className="w-full py-2.5 bg-[#1ED45E]/10 text-[#1ED45E] rounded-xl text-xs font-bold hover:bg-[#1ED45E]/20 transition-colors"
-                      >
-                        Confirmar Letra
-                      </button>
+                            setSubtitleVideoFile(f)
+                            setMessage({ type: '', text: '' })
+                          }}
+                        />
+                      </label>
                     </motion.div>
                   )}
 
