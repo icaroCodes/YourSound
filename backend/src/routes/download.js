@@ -6,9 +6,31 @@ const { spawn } = require('child_process');
 const { verifyAuth } = require('../middleware/auth');
 const rateLimit = require('express-rate-limit');
 
+const fs = require('fs');
 const isWindows = process.platform === 'win32';
-const ffmpegExecutable = isWindows ? require('ffmpeg-static') : 'ffmpeg';
+
+// ffmpeg-static fornece o binário em qualquer plataforma — em produção
+// (Railway/Linux) o `ffmpeg` do PATH não existe, então temos que apontar
+// explicitamente para o binário empacotado pelo npm.
+const ffmpegExecutable = require('ffmpeg-static');
+
 const ytDlpPath = path.join(__dirname, '..', '..', 'bin', isWindows ? 'yt-dlp.exe' : 'yt-dlp');
+
+// Em Linux o binário pode ter perdido a flag de execução (ex.: cache do build).
+// Garantimos chmod +x na primeira chamada.
+if (!isWindows && fs.existsSync(ytDlpPath)) {
+  try {
+    fs.accessSync(ytDlpPath, fs.constants.X_OK);
+  } catch {
+    try { fs.chmodSync(ytDlpPath, 0o755); } catch {}
+  }
+}
+
+// User-agent realista — IPs de datacenter (Railway/Vercel/Render) costumam
+// receber bloqueio anti-bot do YouTube/TikTok quando o UA é o default do yt-dlp.
+const REALISTIC_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+  '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 // 1. ANTI-ABUSE: Strict Rate Limiting
 const downloadLimiter = rateLimit({
@@ -104,23 +126,48 @@ router.post('/', async (req, res) => {
 
   try {
     // Verifica se o binário yt-dlp existe antes de prosseguir
-    const fs = require('fs');
     if (!fs.existsSync(ytDlpPath)) {
       console.error(`[DOWNLOAD] yt-dlp binary not found at ${ytDlpPath}`);
       cleanup();
       return res.status(500).json({ error: 'Conversor indisponível no servidor (yt-dlp ausente).' });
     }
+    if (!ffmpegExecutable || !fs.existsSync(ffmpegExecutable)) {
+      console.error(`[DOWNLOAD] ffmpeg binary not found (ffmpeg-static path: ${ffmpegExecutable})`);
+      cleanup();
+      return res.status(500).json({ error: 'Codificador indisponível no servidor (ffmpeg ausente).' });
+    }
 
     // 5. ARGUMENT WHITELISTING (Strict Sandboxing against injections)
+    // Flags adicionais para burlar bloqueio em IPs de datacenter:
+    //  - user-agent realista de navegador
+    //  - geo-bypass via header X-Forwarded-For
+    //  - retries + fragment-retries para resiliência de rede
+    //  - extractor-args para usar o client "android"/"web" do YouTube
+    //    (mais tolerante a anti-bot que o default)
+    const isYoutube = urlCheck.host.includes('youtube.com') || urlCheck.host.includes('youtu.be');
     const ytdlpArgs = [
       '--force-ipv4',
       '--no-playlist',
+      '--no-check-certificates',
+      '--geo-bypass',
+      '--user-agent', REALISTIC_UA,
+      '--add-header', 'Accept-Language:en-US,en;q=0.9',
+      '--retries', '5',
+      '--fragment-retries', '5',
+      '--socket-timeout', '20',
       '-f', 'bestaudio/best',
-      '--quiet',         // Required para não poluir stdout
+      '--quiet',
       '--no-warnings',
-      '-o', '-',         // Stream directly to stdout
-      '--', url          // Isolador absoluto de URL
+      '-o', '-',
     ];
+
+    if (isYoutube) {
+      // Usa o client "android" + "web" do YouTube — costuma passar pelo
+      // bloqueio "Sign in to confirm you're not a bot" em IPs de datacenter.
+      ytdlpArgs.push('--extractor-args', 'youtube:player_client=android,web');
+    }
+
+    ytdlpArgs.push('--', url);
 
     const ffmpegArgs = [
       '-i', 'pipe:0',    // Lê do stdin de forma contínua
