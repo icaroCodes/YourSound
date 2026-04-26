@@ -169,6 +169,7 @@ try {
   const likesRoutes = require('./src/routes/likes');
   const adminRoutes = require('./src/routes/admin');
   const usersRoutes = require('./src/routes/users');
+  const downloadRoutes = require('./src/routes/download');
 
   app.use('/api/songs/upload', uploadLimiter);
   app.use('/api/songs/proxy-stream', proxyLimiter);
@@ -177,6 +178,9 @@ try {
   app.use('/api/likes', likesRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/users', usersRoutes);
+  
+  // Endpoint principal exigido: POST /download
+  app.use('/download', downloadRoutes);
 
   console.log('[STARTUP] ✅ All routes loaded successfully.');
 } catch (err) {

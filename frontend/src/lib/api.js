@@ -128,7 +128,7 @@ export const api = {
 
   async downloadMp3FromLink(url) {
     const headers = getAuthHeaders();
-    const res = await fetch(`${API_BASE}/api/songs/download-mp3`, {
+    const res = await fetch(`${API_BASE}/download`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ url })
