@@ -56,7 +56,7 @@ function validateMediaUrl(url) {
   }
 }
 
-router.post('/', verifyAuth, downloadLimiter, async (req, res) => {
+router.post('/', async (req, res) => {
   const { url } = req.body;
 
   if (!url) {
@@ -103,6 +103,14 @@ router.post('/', verifyAuth, downloadLimiter, async (req, res) => {
   res.on('error', cleanup);
 
   try {
+    // Verifica se o binário yt-dlp existe antes de prosseguir
+    const fs = require('fs');
+    if (!fs.existsSync(ytDlpPath)) {
+      console.error(`[DOWNLOAD] yt-dlp binary not found at ${ytDlpPath}`);
+      cleanup();
+      return res.status(500).json({ error: 'Conversor indisponível no servidor (yt-dlp ausente).' });
+    }
+
     // 5. ARGUMENT WHITELISTING (Strict Sandboxing against injections)
     const ytdlpArgs = [
       '--force-ipv4',
@@ -125,14 +133,14 @@ router.post('/', verifyAuth, downloadLimiter, async (req, res) => {
     ];
 
     // 6. PIPING DIRECTLY TO RESPONSE (Zero disk I/O)
-    const ytdlpProcess = spawn(ytDlpPath, ytdlpArgs, { 
+    const ytdlpProcess = spawn(ytDlpPath, ytdlpArgs, {
       signal: ac.signal,
-      stdio: ['ignore', 'pipe', 'pipe'] 
+      stdio: ['ignore', 'pipe', 'pipe']
     });
 
-    const ffmpegProcess = spawn(ffmpegExecutable, ffmpegArgs, { 
+    const ffmpegProcess = spawn(ffmpegExecutable, ffmpegArgs, {
       signal: ac.signal,
-      stdio: ['pipe', 'pipe', 'pipe'] 
+      stdio: ['pipe', 'pipe', 'pipe']
     });
 
     let ytdlpErrorLog = '';
@@ -141,14 +149,47 @@ router.post('/', verifyAuth, downloadLimiter, async (req, res) => {
     let ffmpegErrorLog = '';
     ffmpegProcess.stderr.on('data', d => ffmpegErrorLog += d.toString());
 
+    // Capture spawn errors (e.g. ENOENT) — these don't trigger 'exit'
+    ytdlpProcess.on('error', (err) => {
+      console.error('[DOWNLOAD] yt-dlp spawn error:', err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Não foi possível iniciar o conversor.' });
+      } else {
+        res.destroy(err);
+      }
+      cleanup();
+    });
+    ffmpegProcess.on('error', (err) => {
+      console.error('[DOWNLOAD] ffmpeg spawn error:', err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Não foi possível iniciar o codificador MP3.' });
+      } else {
+        res.destroy(err);
+      }
+      cleanup();
+    });
+
+    // Suppress EPIPE on ytdlp->ffmpeg pipe — happens normally when ffmpeg
+    // exits early or yt-dlp aborts; without this, an unhandled 'error' on
+    // the stdin write would crash the request.
+    ytdlpProcess.stdout.on('error', () => {});
+    ffmpegProcess.stdin.on('error', () => {});
+
+    // Defer attaching response headers/pipe until ffmpeg actually produces
+    // data. This way, an early failure can still send a JSON error.
+    let firstChunkSent = false;
+    ffmpegProcess.stdout.on('data', (chunk) => {
+      if (!firstChunkSent) {
+        firstChunkSent = true;
+        res.setHeader('Content-Type', 'audio/mpeg');
+        res.setHeader('Content-Disposition', 'attachment; filename="audio.mp3"');
+        res.write(chunk);
+        ffmpegProcess.stdout.pipe(res);
+      }
+    });
+
     // Stream topology: yt-dlp (stdout) -> ffmpeg (stdin)
     ytdlpProcess.stdout.pipe(ffmpegProcess.stdin);
-
-    // Stream topology: ffmpeg (stdout) -> HTTP res
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Disposition', 'attachment; filename="audio.mp3"');
-    
-    ffmpegProcess.stdout.pipe(res);
 
     // Failure checks
     ytdlpProcess.on('exit', (code) => {
@@ -157,7 +198,6 @@ router.post('/', verifyAuth, downloadLimiter, async (req, res) => {
         if (!res.headersSent) {
           res.status(500).json({ error: 'Falha ao extrair áudio da URL fornecida.' });
         } else {
-          // Force stream to crash so frontend knows it's an incomplete file
           res.destroy(new Error('Stream crash on extraction'));
         }
         cleanup();
@@ -172,6 +212,10 @@ router.post('/', verifyAuth, downloadLimiter, async (req, res) => {
         } else {
           res.destroy(new Error('Stream crash on encode'));
         }
+        cleanup();
+      } else if (code === 0 && !firstChunkSent && !res.headersSent) {
+        // ffmpeg exited cleanly but produced no audio
+        res.status(500).json({ error: 'Nenhum áudio foi extraído do link.' });
         cleanup();
       }
     });

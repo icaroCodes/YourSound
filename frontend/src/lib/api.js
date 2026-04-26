@@ -128,23 +128,39 @@ export const api = {
 
   async downloadMp3FromLink(url) {
     const headers = getAuthHeaders();
-    const res = await fetch(`${API_BASE}/download`, {
+    const res = await fetch(`${API_BASE}/api/download`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ url })
     });
-    
+
     if (res.status === 401) {
       useAuthStore.getState().signOut();
       throw new Error('Sessão expirada. Faça login novamente.');
     }
-    
+
     if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.error || `Erro ${res.status}`);
+      // Server may respond with empty body (e.g. 502/504 timeout) or non-JSON.
+      // Read as text first to avoid "Unexpected end of JSON input".
+      const text = await res.text().catch(() => '');
+      let msg = `Erro ${res.status}`;
+      if (text) {
+        try { msg = JSON.parse(text).error || msg; }
+        catch { msg = text.length < 200 ? text : msg; }
+      }
+      throw new Error(msg);
     }
-    
-    return res.blob();
+
+    const blob = await res.blob();
+    if (!blob || blob.size === 0) {
+      throw new Error('O servidor retornou um arquivo vazio. Tente outro link.');
+    }
+    // Se o servidor devolveu HTML (ex: catch-all do hosting), recusa.
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    if (ct.includes('text/html') || (!ct.includes('audio') && blob.size < 2048)) {
+      throw new Error('Resposta inválida do servidor. Verifique se a rota /api/download está publicada.');
+    }
+    return blob;
   },
 
   // ── Playlists ──────────────────────────────

@@ -179,7 +179,9 @@ try {
   app.use('/api/admin', adminRoutes);
   app.use('/api/users', usersRoutes);
   
-  // Endpoint principal exigido: POST /download
+  // Endpoint principal exigido: POST /api/download
+  // (mantemos /download como alias para retrocompatibilidade local)
+  app.use('/api/download', downloadRoutes);
   app.use('/download', downloadRoutes);
 
   console.log('[STARTUP] ✅ All routes loaded successfully.');
