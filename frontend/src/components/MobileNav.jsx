@@ -1,9 +1,10 @@
 import { Home, Search, Library, Plus } from 'lucide-react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useOnboardingStore } from '../store/useOnboardingStore'
 
 export default function MobileNav({ onAddClick }) {
   const { pathname } = useLocation()
+  const navigate = useNavigate()
 
   return (
     <div className="flex items-center justify-center h-full gap-12">
@@ -24,8 +25,8 @@ export default function MobileNav({ onAddClick }) {
         <span className={`text-[10px] font-bold ${pathname === '/' ? 'text-white' : 'text-zinc-500'}`}>Início</span>
       </Link>
 
-      <button 
-        onClick={() => { onAddClick(); useOnboardingStore.getState().completeAction('create-playlist') }}
+      <button
+        onClick={() => { navigate('/upload'); useOnboardingStore.getState().completeAction('create-playlist') }}
         data-onboarding="create-playlist-btn"
         className="flex flex-col items-center gap-1 transition-transform active:scale-90"
       >

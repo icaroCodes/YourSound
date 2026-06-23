@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { usePlayerStore } from '../store/usePlayerStore'
 import { useAuthStore } from '../store/useAuthStore'
 import { api } from '../lib/api'
-import { Play, Pause, Settings } from 'lucide-react'
+import { Play, Pause, Settings, Bell, Heart, Upload } from 'lucide-react'
 import PlayingBars from '../components/PlayingBars'
 import CreatePlaylistModal from '../components/CreatePlaylistModal'
 import { useNavigate } from 'react-router-dom'
@@ -129,19 +129,26 @@ export default function Home() {
       <div className="block lg:hidden px-4 pt-6 select-none">
         
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-           <div className="flex items-center gap-4">
-              <h1 className="text-[25px] font-black tracking-tight text-white">{greeting}</h1>
-              <button 
-                onClick={() => { setIsCreateModalOpen(true); useOnboardingStore.getState().completeAction('create-playlist') }}
-                data-onboarding="create-playlist-btn"
-                className="w-8 h-8 bg-spotify-green text-black rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform"
+        <div className="flex items-center justify-between mb-6">
+           <h1 className="text-[25px] font-black tracking-tight text-white">{greeting}</h1>
+           <div className="relative flex items-center gap-5">
+              <button
+                className="text-white active:scale-95 transition-transform"
+                title="Enviar música"
+                onClick={() => navigate('/upload')}
               >
-                <Plus size={20} strokeWidth={3} />
+                 <Upload size={24} strokeWidth={1.5} />
               </button>
-           </div>
-           <div className="relative">
-              <button 
+              {userProfile?.role === 'admin' && (
+                <button
+                  className="text-white active:scale-95 transition-transform"
+                  title="Notificações"
+                  onClick={() => navigate('/admin')}
+                >
+                   <Bell size={24} strokeWidth={1.5} />
+                </button>
+              )}
+              <button
                 className="text-white active:scale-95 transition-transform"
                 data-onboarding="profile-menu-btn"
                 onClick={() => {
@@ -149,7 +156,7 @@ export default function Home() {
                   useOnboardingStore.getState().completeAction('open-settings');
                 }}
               >
-                 <Settings size={28} strokeWidth={1.5} />
+                 <Settings size={24} strokeWidth={1.5} />
               </button>
              {isMobileMenuOpen && (
                <>
@@ -179,6 +186,36 @@ export default function Home() {
                </>
              )}
            </div>
+        </div>
+
+        {/* Quick Access Cards */}
+        <div className="grid grid-cols-2 gap-3 mb-8">
+           <button
+             onClick={() => { setIsCreateModalOpen(true); useOnboardingStore.getState().completeAction('create-playlist') }}
+             data-onboarding="create-playlist-btn"
+             className="flex items-center gap-3 bg-[#1d1d1d] hover:bg-[#262626] rounded-xl p-3 text-left active:scale-95 transition-all"
+           >
+              <span className="w-11 h-11 bg-spotify-green text-black rounded-full flex items-center justify-center shrink-0 shadow-lg">
+                 <Plus size={22} strokeWidth={3} />
+              </span>
+              <span className="min-w-0">
+                 <span className="block text-white font-bold text-sm leading-tight truncate">Criar playlist</span>
+                 <span className="block text-zinc-400 text-xs mt-0.5 truncate">É rápido e fácil</span>
+              </span>
+           </button>
+
+           <button
+             onClick={() => navigate('/liked')}
+             className="flex items-center gap-3 bg-[#1d1d1d] hover:bg-[#262626] rounded-xl p-3 text-left active:scale-95 transition-all"
+           >
+              <span className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 shadow-lg bg-linear-to-br from-[#8B5CF6] to-[#6D28D9]">
+                 <Heart size={20} fill="white" stroke="none" />
+              </span>
+              <span className="min-w-0">
+                 <span className="block text-white font-bold text-sm leading-tight truncate">Músicas Curtidas</span>
+                 <span className="block text-zinc-400 text-xs mt-0.5 truncate">Suas favoritas</span>
+              </span>
+           </button>
         </div>
 
         {/* Playlists Section (Normal card size) */}
@@ -212,8 +249,8 @@ export default function Home() {
            <h2 className="text-[22px] font-black text-white mb-6">Tocadas recentemente</h2>
            <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar scroll-smooth">
               {recentSongs.map(song => (
-                <div 
-                  key={song.id} 
+                <div
+                  key={song.id}
                   className="shrink-0 w-[180px] cursor-pointer group"
                   onClick={() => currentSong?.id === song.id ? togglePlay() : playSong(song, songs)}
                 >
@@ -242,8 +279,8 @@ export default function Home() {
            <h2 className="text-[22px] font-black text-white mb-6">Suas músicas estão com saudade</h2>
            <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar scroll-smooth">
               {(recommendedSongs.length > 0 ? recommendedSongs : recentSongs).map(song => (
-                <div 
-                  key={song.id} 
+                <div
+                  key={song.id}
                   className="shrink-0 w-[180px] cursor-pointer group"
                   onClick={() => currentSong?.id === song.id ? togglePlay() : playSong(song, songs)}
                 >

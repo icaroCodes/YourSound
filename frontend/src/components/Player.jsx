@@ -4,23 +4,29 @@ import { usePlayerStore } from '../store/usePlayerStore'
 import { useLikeStore } from '../store/useLikeStore'
 import { useOnboardingStore } from '../store/useOnboardingStore'
 import { audioManager } from '../lib/audioRef'
-import { 
-  Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, 
-  Mic2, ListMusic, Maximize2, Heart, PictureInPicture2, 
-  PlusCircle, Music2, ChevronDown, Share2, MoreHorizontal 
+import {
+  Play, Pause, SkipBack, SkipForward, Volume2, VolumeX,
+  Mic2, ListMusic, Maximize2, Heart, PictureInPicture2,
+  PlusCircle, Music2, ChevronDown, Share2, MoreHorizontal,
+  Shuffle, Repeat, Repeat1, MonitorSpeaker, ChevronUp
 } from 'lucide-react'
 import AddToPlaylistModal from './AddToPlaylistModal'
+import Lyrics from './Lyrics'
+import { api } from '../lib/api'
+import { shareLink } from '../lib/share'
 import { useDialogStore } from '../store/useDialogStore'
 import { useAuthStore } from '../store/useAuthStore'
 import { useLiquidGlass } from '../hooks/useLiquidGlass'
 
 export default function Player({ isMobile = false }) {
   const token = useAuthStore(state => state.session?.access_token)
-  const { 
-    currentSong, isPlaying, togglePlay, next, previous, 
-    volume, setVolume, queue, isQueueOpen, toggleQueue, 
-    isLyricsOpen, toggleLyrics, repeatMode 
+  const {
+    currentSong, isPlaying, togglePlay, next, previous,
+    volume, setVolume, queue, isQueueOpen, toggleQueue,
+    isLyricsOpen, toggleLyrics, repeatMode, toggleRepeat
   } = usePlayerStore()
+  const [shuffleOn, setShuffleOn] = useState(false)
+  const [sharingSong, setSharingSong] = useState(false)
   
   const { isLiked, toggleLike } = useLikeStore()
   const { showAlert } = useDialogStore()
@@ -152,6 +158,7 @@ export default function Player({ isMobile = false }) {
 
   const handleLoadedData = () => {
     if (audioRef.current) {
+      audioManager.element = audioRef.current
       setDuration(audioRef.current.duration)
     }
     if (isInitialLoadRef.current) {
@@ -198,6 +205,29 @@ export default function Player({ isMobile = false }) {
     const mins = Math.floor(time / 60)
     const secs = Math.floor(time % 60)
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`
+  }
+
+  const handleShareSong = async () => {
+    if (!currentSong || sharingSong) return
+    setSharingSong(true)
+    try {
+      // Tenta gerar token (só funciona se for dono). Música pública abre sem token.
+      let shareTok = null
+      try { const d = await api.shareSong(currentSong.id); shareTok = d.share_token } catch {}
+      const base = `${window.location.origin}/song/${currentSong.id}`
+      const url = shareTok ? `${base}?share=${shareTok}` : base
+      const result = await shareLink(url, {
+        title: currentSong.title,
+        text: `Ouça "${currentSong.title}" de ${currentSong.artist} no YourSound`,
+      })
+      if (result === 'copied') {
+        await showAlert('Link copiado!', { title: 'Compartilhar música', icon: 'success' })
+      } else if (result === 'failed') {
+        await showAlert('Não foi possível compartilhar.', { title: 'Erro', icon: 'error' })
+      }
+    } finally {
+      setSharingSong(false)
+    }
   }
 
   const toggleFullscreen = () => {
@@ -302,11 +332,9 @@ export default function Player({ isMobile = false }) {
 
   // --- MOBILE FULL SCREEN PLAYER ---
   if (isMobile && isMobileFullScreen) {
+    const pct = (progress / Math.max(duration, 1)) * 100
     return (
-      <div 
-        className="fixed inset-0 z-[100] bg-gradient-to-b from-[#531e1e] to-[#121212] flex flex-col px-8 pt-4 text-white select-none animate-in slide-in-from-bottom duration-300"
-        style={{ paddingBottom: 'calc(2.5rem + env(safe-area-inset-bottom, 0px))' }}
-      >
+      <div className="fixed inset-0 z-[100] bg-black text-white select-none animate-in slide-in-from-bottom duration-300">
         <audio
           ref={audioRef} src={audioUrl}
           onLoadedData={handleLoadedData} onTimeUpdate={handleTimeUpdate}
@@ -314,86 +342,112 @@ export default function Player({ isMobile = false }) {
           autoPlay={isPlaying}
         />
 
-        {/* Header */}
-        <div className="flex items-center justify-between mb-10">
-           <button onClick={() => setIsMobileFullScreen(false)} className="p-2"><ChevronDown size={32} /></button>
-           <div className="flex flex-col items-center">
-              <span className="text-[10px] uppercase font-bold tracking-widest text-white/60">Tocando de</span>
-              <span className="text-xs font-bold truncate max-w-[150px]">Sua Biblioteca</span>
-           </div>
-           <button className="p-2"><MoreHorizontal size={24} /></button>
-        </div>
+        {addModalOpen && <AddToPlaylistModal song={currentSong} onClose={() => setAddModalOpen(false)} />}
 
-        {/* Cover */}
-        <div className="flex-1 flex items-center justify-center mb-10 px-2 lg:px-4">
-           <div className="aspect-square w-full max-w-[340px] rounded-xl overflow-hidden shadow-2xl">
-             {currentSong.cover_url ? <img src={currentSong.cover_url} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full bg-zinc-800 flex items-center justify-center"><Music2 size={80} className="text-zinc-500" /></div>}
-           </div>
-        </div>
+        {/* Scroll container: now-playing + lyrics como duas telas */}
+        <div className="h-full overflow-y-auto snap-y snap-mandatory no-scrollbar scroll-smooth">
 
-        {/* Info & Like */}
-        <div className="flex items-center justify-between gap-4 mb-8">
-           <div className="flex flex-col min-w-0">
-              <h2 className="text-2xl font-black truncate leading-tight">{currentSong.title}</h2>
-              <p className="text-lg text-white/70 truncate">{currentSong.artist}</p>
-           </div>
-           <button onClick={() => toggleLike(currentSong.id)} className={`${isLiked(currentSong.id) ? 'text-spotify-green' : 'text-white'}`}>
-             <Heart size={32} fill={isLiked(currentSong.id) ? 'currentColor' : 'none'} />
-           </button>
-        </div>
+          {/* ── Tela 1: Now Playing (fiel à imagem) ── */}
+          <section
+            className="h-[100dvh] snap-start flex flex-col px-6 pt-3 bg-gradient-to-b from-[#2a2a2a] to-[#121212]"
+            style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between py-2 shrink-0">
+               <button onClick={() => setIsMobileFullScreen(false)} className="p-1 -ml-1"><ChevronDown size={26} /></button>
+               <span className="text-sm font-semibold truncate max-w-[60%] text-white/90">{currentSong.title}</span>
+               <button className="p-1 -mr-1"><MoreHorizontal size={22} /></button>
+            </div>
 
-        {/* Progress Bar */}
-        <div className="mb-8">
-           <div className="relative h-1.5 w-full bg-white/20 rounded-full mb-3">
-              <div 
-                 className="absolute h-full bg-white rounded-full" 
-                 style={{ width: `${(progress / Math.max(duration, 1)) * 100}%` }}
-              />
-              <div 
-                 className="absolute h-4 w-4 bg-white rounded-full -top-[5px] -ml-2 shadow-lg"
-                 style={{ left: `${(progress / Math.max(duration, 1)) * 100}%` }}
-              />
-              <input 
-                 type="range" min="0" max={duration || 100} value={progress}
-                 onPointerDown={() => setIsSeeking(true)} onChange={handleSeekChange} onPointerUp={handleSeekCommit}
-                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
-           </div>
-           <div className="flex justify-between text-[11px] font-bold text-white/60">
-              <span>{formatTime(progress)}</span>
-              <span>{formatTime(duration)}</span>
-           </div>
-        </div>
+            {/* Cover grande */}
+            <div className="flex-1 flex items-center justify-center min-h-0 py-4">
+               <div className="aspect-square w-full max-w-[360px] rounded-lg overflow-hidden shadow-2xl">
+                 {currentSong.cover_url ? <img src={currentSong.cover_url} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full bg-zinc-800 flex items-center justify-center"><Music2 size={80} className="text-zinc-500" /></div>}
+               </div>
+            </div>
 
-        {/* Controls */}
-        <div className="flex items-center justify-between mb-10 px-2">
-           <button className="text-spotify-green"><Shuffle size={24} /></button>
-           <button onClick={previous}><SkipBack size={36} fill="currentColor" /></button>
-           <button onClick={togglePlay} className="w-20 h-20 bg-white text-black rounded-full flex items-center justify-center shadow-xl">
-             {isPlaying ? <Pause size={36} fill="currentColor" /> : <Play size={36} fill="currentColor" className="ml-1" />}
-           </button>
-           <button onClick={next}><SkipForward size={36} fill="currentColor" /></button>
-           <button className="text-white/60"><Repeat size={24} /></button>
-        </div>
+            {/* Título + thumbnail + adicionar */}
+            <div className="flex items-center gap-3 mb-4 shrink-0">
+               <div className="w-10 h-10 rounded overflow-hidden shrink-0 bg-zinc-800">
+                 {currentSong.cover_url ? <img src={currentSong.cover_url} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex items-center justify-center"><Music2 size={16} className="text-zinc-500" /></div>}
+               </div>
+               <div className="flex-1 min-w-0">
+                  <h2 className="text-lg font-bold truncate leading-tight">{currentSong.title}</h2>
+                  <p className="text-sm text-white/60 truncate">{currentSong.artist}</p>
+               </div>
+               <button
+                 onClick={() => { setAddModalOpen(true); useOnboardingStore.getState().completeAction('add-to-playlist') }}
+                 className="text-white/80 hover:text-white shrink-0"
+               >
+                 <PlusCircle size={26} strokeWidth={1.5} />
+               </button>
+            </div>
 
-        {/* Footer actions */}
-        <div className="flex items-center justify-between px-2">
-           <button className="text-white/60 hover:text-white transition"><MonitorSpeaker size={20} /></button>
-           <div className="flex items-center gap-6">
-              <button 
-                onClick={() => { toggleLyrics(); setIsMobileFullScreen(false) }}
-                className={`transition ${isLyricsOpen ? 'text-spotify-green' : 'text-white/60 hover:text-white'}`}
-              >
-                <Mic2 size={20} />
-              </button>
-              <button className="text-white/60 hover:text-white transition"><Share2 size={20} /></button>
-              <button 
-                onClick={() => { toggleQueue(); setIsMobileFullScreen(false) }}
-                className={`transition ${isQueueOpen ? 'text-spotify-green' : 'text-white/60 hover:text-white'}`}
-              >
-                <ListMusic size={20} />
-              </button>
-           </div>
+            {/* Barra de progresso */}
+            <div className="shrink-0 mb-4">
+               <div className="relative h-1 w-full bg-white/25 rounded-full">
+                  <div className="absolute h-full bg-white rounded-full" style={{ width: `${pct}%` }} />
+                  <div className="absolute h-3 w-3 bg-white rounded-full -top-1 -ml-1.5 shadow" style={{ left: `${pct}%` }} />
+                  <input
+                     type="range" min="0" max={duration || 100} value={progress}
+                     onPointerDown={() => setIsSeeking(true)} onChange={handleSeekChange} onPointerUp={handleSeekCommit}
+                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  />
+               </div>
+               <div className="flex justify-between text-[11px] font-medium text-white/60 mt-1.5">
+                  <span>{formatTime(progress)}</span>
+                  <span>{formatTime(duration)}</span>
+               </div>
+            </div>
+
+            {/* Controles */}
+            <div className="flex items-center justify-between mb-5 shrink-0">
+               <button onClick={() => setShuffleOn(s => !s)} className={shuffleOn ? 'text-spotify-green' : 'text-white/80'}><Shuffle size={22} /></button>
+               <button onClick={previous} className="text-white"><SkipBack size={34} fill="currentColor" /></button>
+               <button onClick={togglePlay} className="w-[68px] h-[68px] bg-white text-black rounded-full flex items-center justify-center shadow-xl active:scale-95 transition-transform">
+                 {isPlaying ? <Pause size={32} fill="currentColor" /> : <Play size={32} fill="currentColor" className="ml-1" />}
+               </button>
+               <button onClick={next} className="text-white"><SkipForward size={34} fill="currentColor" /></button>
+               <button onClick={toggleRepeat} className={repeatMode !== 'off' ? 'text-spotify-green' : 'text-white/80'}>
+                 {repeatMode === 'one' ? <Repeat1 size={22} /> : <Repeat size={22} />}
+               </button>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between shrink-0">
+               <button className="text-white/70 hover:text-white transition"><MonitorSpeaker size={19} /></button>
+               <div className="flex items-center gap-5">
+                  <button onClick={handleShareSong} disabled={sharingSong} className="text-white/70 hover:text-white transition disabled:opacity-50"><Share2 size={19} /></button>
+                  <button
+                    onClick={() => { toggleQueue(); setIsMobileFullScreen(false) }}
+                    className="text-white/70 hover:text-white transition"
+                  >
+                    <ListMusic size={19} />
+                  </button>
+               </div>
+            </div>
+
+            {/* Hint para a letra */}
+            <div className="flex flex-col items-center gap-0.5 pt-3 text-white/40 shrink-0 animate-pulse">
+               <ChevronUp size={16} />
+               <span className="text-[10px] font-bold uppercase tracking-widest">Deslize para a letra</span>
+            </div>
+          </section>
+
+          {/* ── Tela 2: Letra (automática ou por vídeo) ── */}
+          <section className="h-[100dvh] snap-start flex flex-col bg-black">
+             <div className="px-6 pt-5 pb-3 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                   <Mic2 size={18} className="text-white/70" />
+                   <span className="text-sm font-bold text-white/80 uppercase tracking-wide">Letra</span>
+                </div>
+                <button onClick={() => setIsMobileFullScreen(false)} className="text-white/50 hover:text-white"><ChevronDown size={22} /></button>
+             </div>
+             <div className="flex-1 min-h-0">
+                <PlayerLyricsSection song={currentSong} token={token} />
+             </div>
+          </section>
+
         </div>
       </div>
     )
@@ -463,6 +517,98 @@ export default function Player({ isMobile = false }) {
           togglePlay={togglePlay} 
         />,
         pipWindow.document.body
+      )}
+    </div>
+  )
+}
+
+const PLAYER_API_BASE = import.meta.env.VITE_API_URL || ''
+
+// Letra dentro do player mobile — vídeo sincronizado ou letra automática.
+function PlayerLyricsSection({ song, token }) {
+  const isVideoMode = song?.subtitle_mode === 'video' && !!song?.subtitle_video_url
+  if (isVideoMode) {
+    return <SyncedLyricVideo videoUrl={song.subtitle_video_url} token={token} />
+  }
+  return <Lyrics centered />
+}
+
+// Vídeo de legenda sincronizado ao áudio que está tocando (audioManager).
+function SyncedLyricVideo({ videoUrl, token }) {
+  const videoRef = useRef(null)
+  const rafRef = useRef(null)
+  const [src, setSrc] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    if (!videoUrl) return
+    if (videoUrl.match(/youtube\.com\/|youtu\.be\/|tiktok\.com\//)) {
+      setSrc(`${PLAYER_API_BASE}/api/songs/proxy-stream?url=${encodeURIComponent(videoUrl)}&type=video&token=${token || ''}`)
+    } else {
+      setSrc(videoUrl)
+    }
+  }, [videoUrl, token])
+
+  // Sincroniza o vídeo com o áudio principal (corrige drift a cada frame).
+  useEffect(() => {
+    if (!src) return
+    const audio = audioManager.element
+    if (!audio) return
+
+    const onSeek = () => { if (videoRef.current) videoRef.current.currentTime = audio.currentTime }
+    const onPlay = () => { if (videoRef.current) { videoRef.current.currentTime = audio.currentTime; videoRef.current.play().catch(() => {}) } }
+    const onPause = () => { if (videoRef.current) videoRef.current.pause() }
+
+    const loop = () => {
+      const v = videoRef.current
+      if (v && audio) {
+        if (Math.abs(audio.currentTime - v.currentTime) > 0.15 && v.readyState >= 2) v.currentTime = audio.currentTime
+        if (!audio.paused && v.paused && v.readyState >= 2) v.play().catch(() => {})
+        if (audio.paused && !v.paused) v.pause()
+      }
+      rafRef.current = requestAnimationFrame(loop)
+    }
+
+    audio.addEventListener('seeking', onSeek)
+    audio.addEventListener('seeked', onSeek)
+    audio.addEventListener('play', onPlay)
+    audio.addEventListener('pause', onPause)
+    rafRef.current = requestAnimationFrame(loop)
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      audio.removeEventListener('seeking', onSeek)
+      audio.removeEventListener('seeked', onSeek)
+      audio.removeEventListener('play', onPlay)
+      audio.removeEventListener('pause', onPause)
+    }
+  }, [src])
+
+  return (
+    <div className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden">
+      {loading && !error && (
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <div className="w-10 h-10 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+        </div>
+      )}
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <p className="text-white/40 text-sm font-medium">Vídeo indisponível</p>
+        </div>
+      )}
+      {src && (
+        <video
+          ref={videoRef}
+          src={src}
+          muted
+          playsInline
+          preload="auto"
+          className="w-full h-full object-contain transition-opacity duration-500"
+          style={{ opacity: loading ? 0 : 1 }}
+          onLoadedData={() => { setLoading(false); setError(false) }}
+          onError={() => { setLoading(false); setError(true) }}
+        />
       )}
     </div>
   )

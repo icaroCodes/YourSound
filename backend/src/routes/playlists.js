@@ -1,5 +1,6 @@
 const express = require('express');
 const multer = require('multer');
+const crypto = require('crypto');
 const router = express.Router();
 const { supabase } = require('../config/supabase');
 const { verifyAuth } = require('../middleware/auth');
@@ -54,10 +55,21 @@ router.get('/:id', verifyAuth, async (req, res) => {
       return res.status(404).json({ error: 'Playlist não encontrada.' });
     }
 
-    // Ownership check (or public access)
-    if (playlist.user_id !== req.userId && !playlist.is_public) {
+    // Ownership check (público OU dono OU link de compartilhamento válido)
+    const shareToken = req.query.share;
+    const hasShareAccess = shareToken && playlist.share_token && shareToken === playlist.share_token;
+    if (playlist.user_id !== req.userId && !playlist.is_public && !hasShareAccess) {
       return res.status(403).json({ error: 'Acesso negado a esta playlist.' });
     }
+
+    // Anexa dados do criador (nome + avatar real) para exibição no header.
+    const { data: creator } = await supabase
+      .from('users')
+      .select('display_name, avatar_url')
+      .eq('id', playlist.user_id)
+      .single();
+    playlist.user_name = creator?.display_name || 'Usuário';
+    playlist.user_avatar = creator?.avatar_url || null;
 
     // Fetch playlist_songs entries ordered by position (drag-and-drop order)
     const { data: psEntries, error: psErr } = await supabase
@@ -165,6 +177,17 @@ router.patch('/:id', verifyAuth, async (req, res) => {
     if (req.body.is_public !== undefined) {
       updates.is_public = !!req.body.is_public;
     }
+    if (req.body.color !== undefined) {
+      // null/empty => limpa a cor (volta para a cor dominante da capa).
+      // Caso contrário exige um hex válido (#RGB ou #RRGGBB).
+      if (req.body.color === null || req.body.color === '') {
+        updates.color = null;
+      } else if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(req.body.color)) {
+        updates.color = req.body.color.toLowerCase();
+      } else {
+        return res.status(400).json({ error: 'Cor inválida. Use um código hex como #1ED45E.' });
+      }
+    }
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: 'Nenhum campo para atualizar.' });
@@ -182,6 +205,50 @@ router.patch('/:id', verifyAuth, async (req, res) => {
   } catch (err) {
     console.error('[PATCH /playlists/:id]', err.message);
     res.status(500).json({ error: 'Erro ao atualizar playlist.' });
+  }
+});
+
+/**
+ * POST /api/playlists/:id/share
+ * Gera (ou retorna) um token de compartilhamento para a playlist.
+ * Qualquer pessoa com o link contendo esse token poderá ver a playlist,
+ * mesmo que ela seja privada.
+ * SECURITY: Apenas o dono pode gerar/obter o token.
+ */
+router.post('/:id/share', verifyAuth, async (req, res) => {
+  try {
+    const playlistId = req.params.id;
+    if (!isValidUUID(playlistId)) {
+      return res.status(400).json({ error: 'ID inválido.' });
+    }
+
+    const { data: existing, error: fetchErr } = await supabase
+      .from('playlists')
+      .select('user_id, share_token')
+      .eq('id', playlistId)
+      .single();
+
+    if (fetchErr || !existing) {
+      return res.status(404).json({ error: 'Playlist não encontrada.' });
+    }
+    if (existing.user_id !== req.userId) {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    let token = existing.share_token;
+    if (!token) {
+      token = crypto.randomBytes(12).toString('hex');
+      const { error: updErr } = await supabase
+        .from('playlists')
+        .update({ share_token: token })
+        .eq('id', playlistId);
+      if (updErr) throw updErr;
+    }
+
+    res.json({ share_token: token });
+  } catch (err) {
+    console.error('[POST /playlists/:id/share]', err.message);
+    res.status(500).json({ error: 'Erro ao gerar link de compartilhamento.' });
   }
 });
 

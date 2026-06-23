@@ -131,8 +131,17 @@ export const api = {
 
 
   async downloadMp3FromLink(url) {
+    return this._downloadMediaFromLink('/api/download', url, 'audio');
+  },
+
+  async downloadVideoFromLink(url) {
+    return this._downloadMediaFromLink('/api/download/video', url, 'video');
+  },
+
+  // expectedKind: 'audio' | 'video' — usado para validar o content-type.
+  async _downloadMediaFromLink(endpoint, url, expectedKind) {
     const headers = getAuthHeaders();
-    const res = await fetch(`${API_BASE}/api/download`, {
+    const res = await fetch(`${API_BASE}${endpoint}`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ url })
@@ -161,8 +170,8 @@ export const api = {
     }
     // Se o servidor devolveu HTML (ex: catch-all do hosting), recusa.
     const ct = (res.headers.get('content-type') || '').toLowerCase();
-    if (ct.includes('text/html') || (!ct.includes('audio') && blob.size < 2048)) {
-      throw new Error('Resposta inválida do servidor. Verifique se a rota /api/download está publicada.');
+    if (ct.includes('text/html') || (!ct.includes(expectedKind) && blob.size < 2048)) {
+      throw new Error(`Resposta inválida do servidor. Verifique se a rota ${endpoint} está publicada.`);
     }
     return blob;
   },
@@ -174,10 +183,36 @@ export const api = {
     return handleResponse(res);
   },
 
-  async getPlaylist(id) {
+  async getPlaylist(id, shareToken = null) {
     const headers = getAuthHeaders();
-    const res = await fetch(`${API_BASE}/api/playlists/${id}`, { headers });
+    const qs = shareToken ? `?share=${encodeURIComponent(shareToken)}` : '';
+    const res = await fetch(`${API_BASE}/api/playlists/${id}${qs}`, { headers });
     return handleResponse(res);
+  },
+
+  async sharePlaylist(id) {
+    const headers = getAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/playlists/${id}/share`, {
+      method: 'POST',
+      headers,
+    });
+    return handleResponse(res); // { share_token }
+  },
+
+  async getSong(id, shareToken = null) {
+    const headers = getAuthHeaders();
+    const qs = shareToken ? `?share=${encodeURIComponent(shareToken)}` : '';
+    const res = await fetch(`${API_BASE}/api/songs/${id}${qs}`, { headers });
+    return handleResponse(res);
+  },
+
+  async shareSong(id) {
+    const headers = getAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/songs/${id}/share`, {
+      method: 'POST',
+      headers,
+    });
+    return handleResponse(res); // { share_token }
   },
 
   async createPlaylist(name, is_public = false) {

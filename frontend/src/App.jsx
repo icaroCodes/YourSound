@@ -13,6 +13,7 @@ import LikedSongs from './pages/LikedSongs'
 import Admin from './pages/Admin'
 import Profile from './pages/Profile'
 import Search from './pages/Search'
+import SongShare from './pages/SongShare'
 import Dialog from './components/Dialog'
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -200,6 +201,7 @@ export default function App() {
             <Route path="upload" element={<Upload />} />
             <Route path="search" element={<Search />} />
             <Route path="liked" element={<LikedSongs />} />
+            <Route path="song/:id" element={<SongShare />} />
             <Route path="playlists/:id" element={<PlaylistDetails />} />
             <Route path="profile" element={<Profile />} />
             <Route path="admin" element={

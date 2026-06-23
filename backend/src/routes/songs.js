@@ -1006,4 +1006,76 @@ router.get('/proxy-stream', verifyAuth, async (req, res) => {
   await streamFromSource(directData);
 });
 
+/**
+ * POST /api/songs/:id/share
+ * Gera (ou retorna) um token de compartilhamento para a música.
+ * Qualquer pessoa com o link contendo esse token poderá abrir/ouvir a música,
+ * mesmo que ela seja privada.
+ * SECURITY: Apenas o dono pode gerar/obter o token.
+ */
+router.post('/:id/share', verifyAuth, async (req, res) => {
+  try {
+    const songId = req.params.id;
+    if (!isValidUUID(songId)) return res.status(400).json({ error: 'ID inválido.' });
+
+    const { data: song, error } = await supabase
+      .from('songs')
+      .select('user_id, share_token')
+      .eq('id', songId)
+      .single();
+
+    if (error || !song) return res.status(404).json({ error: 'Música não encontrada.' });
+    if (song.user_id !== req.userId) return res.status(403).json({ error: 'Acesso negado.' });
+
+    let token = song.share_token;
+    if (!token) {
+      token = require('crypto').randomBytes(12).toString('hex');
+      const { error: updErr } = await supabase
+        .from('songs')
+        .update({ share_token: token })
+        .eq('id', songId);
+      if (updErr) throw updErr;
+    }
+
+    res.json({ share_token: token });
+  } catch (err) {
+    console.error('[POST /songs/:id/share]', err.message);
+    res.status(500).json({ error: 'Erro ao gerar link de compartilhamento.' });
+  }
+});
+
+/**
+ * GET /api/songs/:id
+ * Retorna uma única música (para a página de compartilhamento).
+ * Acesso: música pública aprovada, OU dono, OU link com token válido.
+ * IMPORTANTE: declarada por último para não capturar rotas literais
+ * como /search, /recent, /recommended, /proxy-stream.
+ */
+router.get('/:id', verifyAuth, async (req, res) => {
+  try {
+    const songId = req.params.id;
+    if (!isValidUUID(songId)) return res.status(400).json({ error: 'ID inválido.' });
+
+    const { data: song, error } = await supabase
+      .from('songs')
+      .select('*')
+      .eq('id', songId)
+      .single();
+
+    if (error || !song) return res.status(404).json({ error: 'Música não encontrada.' });
+
+    const shareToken = req.query.share;
+    const hasShareAccess = shareToken && song.share_token && shareToken === song.share_token;
+    const isPublicApproved = song.is_public && song.status === 'approved';
+    if (song.user_id !== req.userId && !isPublicApproved && !hasShareAccess) {
+      return res.status(403).json({ error: 'Acesso negado a esta música.' });
+    }
+
+    res.json(song);
+  } catch (err) {
+    console.error('[GET /songs/:id]', err.message);
+    res.status(500).json({ error: 'Erro ao carregar música.' });
+  }
+});
+
 module.exports = router;

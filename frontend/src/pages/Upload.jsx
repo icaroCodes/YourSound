@@ -59,6 +59,7 @@ export default function Upload() {
   const [audioFile, setAudioFile] = useState(null)
   const [audioMode, setAudioMode] = useState('file') // 'file' or 'link'
   const [audioUrl, setAudioUrl] = useState('')
+  const [downloadFormat, setDownloadFormat] = useState('mp3') // 'mp3' or 'mp4'
   const [coverFile, setCoverFile] = useState(null)
   const [coverPreview, setCoverPreview] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -152,23 +153,26 @@ export default function Upload() {
 
   const handleDownload = async () => {
     if (!audioUrl) {
-      setMessage({ type: 'error', text: 'Insira o link do áudio.' })
+      setMessage({ type: 'error', text: 'Insira o link do vídeo ou música.' })
       return
     }
+    const isVideo = downloadFormat === 'mp4'
     setLoading(true)
     setMessage({ type: '', text: '' })
     try {
-      const blob = await api.downloadMp3FromLink(audioUrl)
+      const blob = isVideo
+        ? await api.downloadVideoFromLink(audioUrl)
+        : await api.downloadMp3FromLink(audioUrl)
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `Audio_${Date.now()}.mp3`
+      a.download = isVideo ? `Video_${Date.now()}.mp4` : `Audio_${Date.now()}.mp3`
       document.body.appendChild(a)
       a.click()
       a.remove()
       window.URL.revokeObjectURL(url)
-      
-      setMessage({ type: 'success', text: 'Áudio baixado com sucesso!' })
+
+      setMessage({ type: 'success', text: isVideo ? 'Vídeo baixado com sucesso!' : 'Áudio baixado com sucesso!' })
       setAudioUrl('')
     } catch (err) {
       setMessage({ type: 'error', text: err.message })
@@ -244,7 +248,7 @@ export default function Upload() {
                   audioMode === 'link' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
-                Conversor MP3 (Link)
+                Conversor MP3/MP4 (Link)
               </button>
             </div>
           </motion.div>
@@ -259,6 +263,31 @@ export default function Upload() {
                   placeholder="Exemplo: https://tiktok.com/... ou https://youtube.com/..."
                 />
               </Field>
+
+              {/* ── Formato de saída ── */}
+              <Field label="Formato">
+                <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-900 rounded-2xl">
+                  {[
+                    { id: 'mp3', label: 'MP3 (Áudio)', icon: <Music4 size={14} /> },
+                    { id: 'mp4', label: 'MP4 (Vídeo)', icon: <Film size={14} /> }
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setDownloadFormat(opt.id)}
+                      className={`flex items-center justify-center gap-2 py-3 rounded-xl text-[11px] font-bold transition-all ${
+                        downloadFormat === opt.id
+                          ? 'bg-zinc-800 text-white shadow-lg border border-zinc-700'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      {opt.icon}
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
               <div className="pt-4">
                 <button
                   type="button"
@@ -268,7 +297,7 @@ export default function Upload() {
                 >
                   {loading ? (
                     <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
-                  ) : 'Baixar Arquivo MP3'}
+                  ) : (downloadFormat === 'mp4' ? 'Baixar Arquivo MP4' : 'Baixar Arquivo MP3')}
                 </button>
               </div>
             </motion.div>

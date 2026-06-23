@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../store/useAuthStore'
+import { useDialogStore } from '../store/useDialogStore'
+import { shareLink } from '../lib/share'
 import { usePlayerStore } from '../store/usePlayerStore'
 import { api } from '../lib/api'
 import {
   Play, Pause, Shuffle, UserPlus, MoreHorizontal,
   Clock, Search, Plus, Trash2, ListMusic, List, Heart, Camera,
-  Pencil, X, Check, Globe, Lock, GripVertical, ArrowLeft, Download
+  Pencil, X, Check, Globe, Lock, GripVertical, ArrowLeft, Download, Share2
 } from 'lucide-react'
 import { useLikeStore } from '../store/useLikeStore'
 import { useOnboardingStore } from '../store/useOnboardingStore'
@@ -29,6 +31,76 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+
+// ── Paleta de cores para o fundo da playlist ─────────────────────
+const PRESET_COLORS = [
+  '#1ED45E', '#0EA5E9', '#2563EB', '#7C3AED',
+  '#A21CAF', '#DB2777', '#EF4444', '#E13300',
+  '#F59E0B', '#10B981', '#6B7280', '#18181B',
+]
+
+const isValidHex = (v) => /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v || '')
+
+// ── Seletor de cor (padrão + paleta + código hex) ────────────────
+function ColorPicker({ value, onChange, defaultColor }) {
+  return (
+    <div className="space-y-3">
+      {/* Opção "Padrão" — cor extraída automaticamente da capa */}
+      <button
+        type="button"
+        onClick={() => onChange('')}
+        className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg border transition text-sm font-medium ${
+          !value ? 'border-white/40 bg-white/5 text-white' : 'border-white/10 text-zinc-400 hover:bg-white/5'
+        }`}
+      >
+        <span
+          className="w-5 h-5 rounded-full border border-white/20 shrink-0"
+          style={{ backgroundColor: defaultColor || '#535353' }}
+        />
+        <span className="flex-1 text-left">Padrão <span className="font-normal opacity-70">(cor da capa)</span></span>
+        {!value && <Check size={16} className="text-spotify-green shrink-0" />}
+      </button>
+
+      <div className="grid grid-cols-6 gap-2">
+        {PRESET_COLORS.map(c => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onChange(c)}
+            title={c}
+            className={`w-full aspect-square rounded-lg transition-transform ${
+              (value || '').toLowerCase() === c.toLowerCase()
+                ? 'ring-2 ring-white ring-offset-2 ring-offset-[#282828] scale-110'
+                : 'hover:scale-105'
+            }`}
+            style={{ backgroundColor: c }}
+          />
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="color"
+          value={isValidHex(value) ? value : '#1ED45E'}
+          onChange={e => onChange(e.target.value)}
+          className="w-10 h-10 rounded-lg cursor-pointer bg-transparent border border-white/10 shrink-0 p-0.5"
+          title="Escolher cor personalizada"
+        />
+        <input
+          type="text"
+          value={value || ''}
+          onChange={e => {
+            let v = e.target.value.trim()
+            if (v && !v.startsWith('#')) v = '#' + v
+            onChange(v)
+          }}
+          placeholder="#1ED45E"
+          maxLength={7}
+          className="flex-1 px-3 py-2.5 bg-white/7 border border-white/10 rounded-lg text-white text-sm uppercase focus:outline-none focus:border-white/30 placeholder:text-zinc-500"
+        />
+      </div>
+    </div>
+  )
+}
 
 // ── Salva ordem no banco de dados ────────────────────────────────
 async function persistOrder(playlistId, songs) {
@@ -220,10 +292,14 @@ function SortableMobileSongRow({ song, isActive, playing, isOwner, onRowClick, o
 export default function PlaylistDetails() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const shareToken = searchParams.get('share')
   const { user, userProfile } = useAuthStore()
+  const { showAlert } = useDialogStore()
   const { playSong, currentSong, isPlaying, togglePlay, updateQueue } = usePlayerStore()
   const { isLiked, toggleLike } = useLikeStore()
   const [playlistModalSong, setPlaylistModalSong] = useState(null)
+  const [sharing, setSharing] = useState(false)
 
   const [playlist, setPlaylist] = useState(null)
   const [songs, setSongs] = useState([])
@@ -283,6 +359,7 @@ export default function PlaylistDetails() {
   const [editName, setEditName] = useState('')
   const [editDescription, setEditDescription] = useState('')
   const [editIsPublic, setEditIsPublic] = useState(false)
+  const [editColor, setEditColor] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -291,7 +368,9 @@ export default function PlaylistDetails() {
 
   // Compute coverUrl early so the hook always runs (Rules of Hooks)
   const coverUrl = playlist?.cover_url || (songs.length > 0 ? songs[0]?.cover_url : null)
-  const bannerColor = useDominantColor(coverUrl)
+  const dominantColor = useDominantColor(coverUrl)
+  // Cor manual da playlist tem prioridade sobre a cor dominante da capa.
+  const bannerColor = playlist?.color || dominantColor
 
   useEffect(() => {
     fetchPlaylistData()
@@ -317,13 +396,39 @@ export default function PlaylistDetails() {
     try {
       setLoading(true)
       setError(null)
-      const data = await api.getPlaylist(id)
+      const data = await api.getPlaylist(id, shareToken)
       setPlaylist(data.playlist)
       setSongs(data.songs) // order comes from the DB (position column)
     } catch (err) {
       setError(err.message || 'Erro ao carregar playlist.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // ── Compartilhar playlist por link ──
+  const handleSharePlaylist = async () => {
+    setMenuOpen(false)
+    setSharing(true)
+    try {
+      // Dono gera/obtém o token; quem abriu via link reaproveita o token da URL.
+      let token = shareToken
+      if (playlist?.user_id === user?.id) {
+        const data = await api.sharePlaylist(id)
+        token = data.share_token
+      }
+      const base = `${window.location.origin}/playlists/${id}`
+      const url = token ? `${base}?share=${token}` : base
+      const result = await shareLink(url, { title: playlist?.name, text: `Ouça "${playlist?.name}" no YourSound` })
+      if (result === 'copied') {
+        await showAlert('Link copiado! Quem abrir este link poderá ver a playlist.', { title: 'Link de compartilhamento', icon: 'success' })
+      } else if (result === 'failed') {
+        await showAlert('Não foi possível compartilhar o link.', { title: 'Erro', icon: 'error' })
+      }
+    } catch (err) {
+      await showAlert(err.message || 'Erro ao gerar o link.', { title: 'Erro', icon: 'error' })
+    } finally {
+      setSharing(false)
     }
   }
 
@@ -353,6 +458,7 @@ export default function PlaylistDetails() {
     setEditName(playlist.name)
     setEditDescription(playlist.description || '')
     setEditIsPublic(!!playlist.is_public)
+    setEditColor(playlist.color || '')
     setEditModalOpen(true)
     setMenuOpen(false)
   }
@@ -365,6 +471,14 @@ export default function PlaylistDetails() {
     if (trimmedName !== playlist.name) fields.name = trimmedName
     if (editDescription.trim() !== (playlist.description || '')) fields.description = editDescription.trim()
     if (editIsPublic !== !!playlist.is_public) fields.is_public = editIsPublic
+
+    const trimmedColor = editColor.trim()
+    const currentColor = playlist.color || ''
+    if (trimmedColor.toLowerCase() !== currentColor.toLowerCase()) {
+      // Vazio => null (volta para cor automática). Só envia hex válido.
+      if (trimmedColor === '') fields.color = null
+      else if (isValidHex(trimmedColor)) fields.color = trimmedColor
+    }
 
     if (Object.keys(fields).length === 0) {
       setEditModalOpen(false)
@@ -600,6 +714,11 @@ export default function PlaylistDetails() {
 
   const isOwner = playlist.user_id === user?.id
 
+  // Dados do criador para o header (nome + avatar real do banco)
+  const creatorName = isOwner ? userProfile?.display_name : (playlist.user_name || 'Usuário')
+  const creatorAvatar = isOwner ? userProfile?.avatar_url : playlist.user_avatar
+  const creatorInitial = (creatorName?.[0] || 'U').toUpperCase()
+
   if (!isDesktop) {
     return (
       <div className="flex flex-col min-h-screen bg-black text-white pb-32">
@@ -650,10 +769,14 @@ export default function PlaylistDetails() {
           <div className="w-full text-left space-y-2 mt-4">
             <h1 className="text-2xl font-black tracking-tight leading-tight">{playlist.name}</h1>
             <div className="flex items-center gap-2">
-               <div className="w-6 h-6 rounded-full bg-linear-to-br from-zinc-700 to-zinc-800 flex items-center justify-center overflow-hidden border border-transparent">
-                  <span className="text-[10px] text-zinc-400 font-bold">{isOwner ? userProfile?.display_name?.[0]?.toUpperCase() : 'U'}</span>
+               <div className="w-6 h-6 rounded-full bg-linear-to-br from-zinc-700 to-zinc-800 flex items-center justify-center overflow-hidden border border-transparent shrink-0">
+                  {creatorAvatar ? (
+                    <img src={creatorAvatar} alt={creatorName} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-[10px] text-zinc-400 font-bold">{creatorInitial}</span>
+                  )}
                </div>
-               <span className="text-sm font-bold text-white/90">{isOwner ? userProfile?.display_name : (playlist.user_name || 'Usuário')}</span>
+               <span className="text-sm font-bold text-white/90">{creatorName}</span>
             </div>
             <div className="text-[13px] text-zinc-400 font-medium">
                {songs.length} salvamento{songs.length !== 1 ? 's' : ''} • {formatTotalTime(totalDuration)}
@@ -686,6 +809,14 @@ export default function PlaylistDetails() {
                     >
                       <Pencil size={18} className="text-zinc-400" />
                       <span className="font-semibold">Editar detalhes</span>
+                    </button>
+                    <button
+                      onClick={handleSharePlaylist}
+                      disabled={sharing}
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/10 active:bg-white/10 transition-colors text-left text-white disabled:opacity-50"
+                    >
+                      <Share2 size={18} className="text-zinc-400" />
+                      <span className="font-semibold">{sharing ? 'Gerando link...' : 'Compartilhar'}</span>
                     </button>
                     <button
                       onClick={() => { setShowDeleteConfirm(true); setMenuOpen(false) }}
@@ -877,6 +1008,10 @@ export default function PlaylistDetails() {
                      </div>
                    </button>
                  </div>
+                 <div>
+                   <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Cor de fundo</label>
+                   <ColorPicker value={editColor} onChange={setEditColor} defaultColor={dominantColor} />
+                 </div>
                </div>
 
                <div className="flex justify-end gap-3 mt-6">
@@ -1023,6 +1158,14 @@ export default function PlaylistDetails() {
                     Editar detalhes
                   </button>
                   <button
+                    onClick={handleSharePlaylist}
+                    disabled={sharing}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/10 transition-colors text-left text-white disabled:opacity-50"
+                  >
+                    <Share2 size={16} className="text-zinc-400" />
+                    {sharing ? 'Gerando link...' : 'Compartilhar'}
+                  </button>
+                  <button
                     onClick={() => { setShowDeleteConfirm(true); setMenuOpen(false) }}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/10 transition-colors text-left text-red-400"
                   >
@@ -1098,6 +1241,13 @@ export default function PlaylistDetails() {
                     <span className="text-[11px] font-normal opacity-70">{editIsPublic ? 'Qualquer pessoa pode encontrar e ouvir' : 'Só você pode ver esta playlist'}</span>
                   </div>
                 </button>
+              </div>
+
+              {/* Background Color */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">Cor de fundo</label>
+                <ColorPicker value={editColor} onChange={setEditColor} defaultColor={dominantColor} />
+                <span className="text-[11px] text-zinc-600 mt-1.5 block">Escolha uma cor, use o código hex, ou deixe em "Padrão" para a cor da capa.</span>
               </div>
             </div>
 

@@ -10,7 +10,7 @@ const fs = require('fs');
 const isWindows = process.platform === 'win32';
 
 // ffmpeg-static fornece o binário em qualquer plataforma — em produção
-// (Railway/Linux) o `ffmpeg` do PATH não existe, então temos que apontar
+// (Railway/Render/Linux) o `ffmpeg` do PATH não existe, então temos que apontar
 // explicitamente para o binário empacotado pelo npm.
 const ffmpegExecutable = require('ffmpeg-static');
 
@@ -78,7 +78,49 @@ function validateMediaUrl(url) {
   }
 }
 
-router.post('/', async (req, res) => {
+// Argumentos base do yt-dlp, compartilhados entre áudio e vídeo.
+// Flags adicionais para burlar bloqueio em IPs de datacenter:
+//  - user-agent realista de navegador
+//  - geo-bypass
+//  - retries + fragment-retries para resiliência de rede
+//  - extractor-args para usar o client "android"/"web" do YouTube
+//    (mais tolerante a anti-bot que o default)
+function buildYtdlpArgs(url, isYoutube, kind) {
+  const args = [
+    '--force-ipv4',
+    '--no-playlist',
+    '--no-check-certificates',
+    '--geo-bypass',
+    '--user-agent', REALISTIC_UA,
+    '--add-header', 'Accept-Language:en-US,en;q=0.9',
+    '--retries', '5',
+    '--fragment-retries', '5',
+    '--socket-timeout', '20',
+    '--quiet',
+    '--no-warnings',
+  ];
+
+  if (kind === 'video') {
+    // Melhor formato progressivo MP4 (vídeo+áudio em um único stream,
+    // que pode ser enviado direto ao cliente sem remux/merge).
+    args.push('-f', 'best[ext=mp4]/best');
+  } else {
+    args.push('-f', 'bestaudio/best');
+  }
+
+  args.push('-o', '-'); // stdout
+
+  if (isYoutube) {
+    args.push('--extractor-args', 'youtube:player_client=android,web');
+  }
+
+  args.push('--', url);
+  return args;
+}
+
+// Handler genérico: kind === 'audio' converte para MP3 via ffmpeg,
+// kind === 'video' envia o MP4 direto do yt-dlp.
+async function handleMedia(req, res, kind) {
   const { url } = req.body;
 
   if (!url) {
@@ -92,9 +134,9 @@ router.post('/', async (req, res) => {
   }
 
   // 3. ENQUEUE REQUEST (prevents CPU explosion)
-  console.log(`[DOWNLOAD] Job na fila para: ${url.substring(0, 40)}...`);
+  console.log(`[DOWNLOAD:${kind}] Job na fila para: ${url.substring(0, 40)}...`);
   await concurrencyLimit.acquire();
-  console.log(`[DOWNLOAD] Job iniciado.`);
+  console.log(`[DOWNLOAD:${kind}] Job iniciado.`);
 
   let released = false;
   const releaseSlot = () => {
@@ -106,10 +148,10 @@ router.post('/', async (req, res) => {
 
   // 4. PROCESS ABORT CONTROLLER (Strict Timeouts per process)
   const ac = new AbortController();
-  
+
   // Hard limit global de 120s para liberar a fila em caso de zumbi process
   const timeoutId = setTimeout(() => {
-    console.error(`[DOWNLOAD] TIMEOUT global atingido.`);
+    console.error(`[DOWNLOAD:${kind}] TIMEOUT global atingido.`);
     ac.abort('TIMEOUT');
   }, 120000);
 
@@ -127,47 +169,74 @@ router.post('/', async (req, res) => {
   try {
     // Verifica se o binário yt-dlp existe antes de prosseguir
     if (!fs.existsSync(ytDlpPath)) {
-      console.error(`[DOWNLOAD] yt-dlp binary not found at ${ytDlpPath}`);
+      console.error(`[DOWNLOAD:${kind}] yt-dlp binary not found at ${ytDlpPath}`);
       cleanup();
       return res.status(500).json({ error: 'Conversor indisponível no servidor (yt-dlp ausente).' });
     }
+
+    const isYoutube = urlCheck.host.includes('youtube.com') || urlCheck.host.includes('youtu.be');
+    const ytdlpArgs = buildYtdlpArgs(url, isYoutube, kind);
+
+    // ── MODO VÍDEO: envia o MP4 direto do yt-dlp (sem reencode) ──────────
+    if (kind === 'video') {
+      const ytdlpProcess = spawn(ytDlpPath, ytdlpArgs, {
+        signal: ac.signal,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      let ytdlpErrorLog = '';
+      ytdlpProcess.stderr.on('data', d => ytdlpErrorLog += d.toString());
+
+      ytdlpProcess.on('error', (err) => {
+        console.error(`[DOWNLOAD:video] yt-dlp spawn error:`, err.message);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Não foi possível iniciar o conversor.' });
+        } else {
+          res.destroy(err);
+        }
+        cleanup();
+      });
+
+      // Suppress EPIPE on the pipe to the response.
+      ytdlpProcess.stdout.on('error', () => {});
+
+      // Só anexa headers/pipe quando o yt-dlp realmente produz dados,
+      // assim uma falha precoce ainda consegue devolver JSON de erro.
+      let firstChunkSent = false;
+      ytdlpProcess.stdout.on('data', (chunk) => {
+        if (!firstChunkSent) {
+          firstChunkSent = true;
+          res.setHeader('Content-Type', 'video/mp4');
+          res.setHeader('Content-Disposition', 'attachment; filename="video.mp4"');
+          res.write(chunk);
+          ytdlpProcess.stdout.pipe(res);
+        }
+      });
+
+      ytdlpProcess.on('exit', (code) => {
+        if (code !== 0 && !ac.signal.aborted) {
+          console.error(`[DOWNLOAD:video] yt-dlp error (${code}):`, ytdlpErrorLog.substring(0, 200));
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Falha ao baixar o vídeo da URL fornecida.' });
+          } else {
+            res.destroy(new Error('Stream crash on extraction'));
+          }
+          cleanup();
+        } else if (code === 0 && !firstChunkSent && !res.headersSent) {
+          res.status(500).json({ error: 'Nenhum vídeo foi extraído do link.' });
+          cleanup();
+        }
+      });
+
+      return;
+    }
+
+    // ── MODO ÁUDIO: yt-dlp -> ffmpeg -> MP3 ──────────────────────────────
     if (!ffmpegExecutable || !fs.existsSync(ffmpegExecutable)) {
-      console.error(`[DOWNLOAD] ffmpeg binary not found (ffmpeg-static path: ${ffmpegExecutable})`);
+      console.error(`[DOWNLOAD:audio] ffmpeg binary not found (ffmpeg-static path: ${ffmpegExecutable})`);
       cleanup();
       return res.status(500).json({ error: 'Codificador indisponível no servidor (ffmpeg ausente).' });
     }
-
-    // 5. ARGUMENT WHITELISTING (Strict Sandboxing against injections)
-    // Flags adicionais para burlar bloqueio em IPs de datacenter:
-    //  - user-agent realista de navegador
-    //  - geo-bypass via header X-Forwarded-For
-    //  - retries + fragment-retries para resiliência de rede
-    //  - extractor-args para usar o client "android"/"web" do YouTube
-    //    (mais tolerante a anti-bot que o default)
-    const isYoutube = urlCheck.host.includes('youtube.com') || urlCheck.host.includes('youtu.be');
-    const ytdlpArgs = [
-      '--force-ipv4',
-      '--no-playlist',
-      '--no-check-certificates',
-      '--geo-bypass',
-      '--user-agent', REALISTIC_UA,
-      '--add-header', 'Accept-Language:en-US,en;q=0.9',
-      '--retries', '5',
-      '--fragment-retries', '5',
-      '--socket-timeout', '20',
-      '-f', 'bestaudio/best',
-      '--quiet',
-      '--no-warnings',
-      '-o', '-',
-    ];
-
-    if (isYoutube) {
-      // Usa o client "android" + "web" do YouTube — costuma passar pelo
-      // bloqueio "Sign in to confirm you're not a bot" em IPs de datacenter.
-      ytdlpArgs.push('--extractor-args', 'youtube:player_client=android,web');
-    }
-
-    ytdlpArgs.push('--', url);
 
     const ffmpegArgs = [
       '-i', 'pipe:0',    // Lê do stdin de forma contínua
@@ -198,7 +267,7 @@ router.post('/', async (req, res) => {
 
     // Capture spawn errors (e.g. ENOENT) — these don't trigger 'exit'
     ytdlpProcess.on('error', (err) => {
-      console.error('[DOWNLOAD] yt-dlp spawn error:', err.message);
+      console.error('[DOWNLOAD:audio] yt-dlp spawn error:', err.message);
       if (!res.headersSent) {
         res.status(500).json({ error: 'Não foi possível iniciar o conversor.' });
       } else {
@@ -207,7 +276,7 @@ router.post('/', async (req, res) => {
       cleanup();
     });
     ffmpegProcess.on('error', (err) => {
-      console.error('[DOWNLOAD] ffmpeg spawn error:', err.message);
+      console.error('[DOWNLOAD:audio] ffmpeg spawn error:', err.message);
       if (!res.headersSent) {
         res.status(500).json({ error: 'Não foi possível iniciar o codificador MP3.' });
       } else {
@@ -241,7 +310,7 @@ router.post('/', async (req, res) => {
     // Failure checks
     ytdlpProcess.on('exit', (code) => {
       if (code !== 0 && !ac.signal.aborted) {
-        console.error(`[DOWNLOAD] yt-dlp error (${code}):`, ytdlpErrorLog.substring(0, 200));
+        console.error(`[DOWNLOAD:audio] yt-dlp error (${code}):`, ytdlpErrorLog.substring(0, 200));
         if (!res.headersSent) {
           res.status(500).json({ error: 'Falha ao extrair áudio da URL fornecida.' });
         } else {
@@ -253,7 +322,7 @@ router.post('/', async (req, res) => {
 
     ffmpegProcess.on('exit', (code) => {
       if (code !== 0 && !ac.signal.aborted) {
-        console.error(`[DOWNLOAD] ffmpeg error (${code}):`, ffmpegErrorLog.substring(0, 200));
+        console.error(`[DOWNLOAD:audio] ffmpeg error (${code}):`, ffmpegErrorLog.substring(0, 200));
         if (!res.headersSent) {
           res.status(500).json({ error: 'Falha na conversão para MP3.' });
         } else {
@@ -268,10 +337,15 @@ router.post('/', async (req, res) => {
     });
 
   } catch (err) {
-    console.error(`[DOWNLOAD] Exception:`, err.message);
+    console.error(`[DOWNLOAD:${kind}] Exception:`, err.message);
     if (!res.headersSent) res.status(500).json({ error: 'Erro interno no servidor de mídia.' });
     cleanup();
   }
-});
+}
+
+// POST /api/download        → MP3 (áudio)
+router.post('/', (req, res) => handleMedia(req, res, 'audio'));
+// POST /api/download/video  → MP4 (vídeo)
+router.post('/video', (req, res) => handleMedia(req, res, 'video'));
 
 module.exports = router;

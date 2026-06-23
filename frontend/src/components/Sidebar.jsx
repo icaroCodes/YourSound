@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Home, Search, Library, Plus, ListMusic, Music2, Users, Folder, X, List, ChevronRight, Bell, Globe, Lock } from 'lucide-react'
 import { api } from '../lib/api'
 import { useAuthStore } from '../store/useAuthStore'
@@ -10,6 +10,7 @@ import AdminRequestsModal from './AdminRequestsModal'
 
 export default function Sidebar({ collapsed, toggleSidebar }) {
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const { userProfile } = useAuthStore()
   const { likedSongs } = useLikeStore()
   const { playSong } = usePlayerStore()
@@ -75,9 +76,9 @@ export default function Sidebar({ collapsed, toggleSidebar }) {
             <div className="flex items-center gap-1">
               <div className="relative" ref={menuRef}>
                 <button
-                  onClick={() => { setMenuOpen(o => !o); setCreateModalOpen(false) }}
+                  onClick={() => navigate('/upload')}
                   className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-zinc-400 hover:text-white"
-                  title="Criar"
+                  title="Enviar música"
                   data-onboarding="create-playlist-btn"
                 >
                   <Plus size={20} />
@@ -221,9 +222,9 @@ export default function Sidebar({ collapsed, toggleSidebar }) {
           {collapsed && (
             <div className="mb-2 w-full flex justify-center mt-2">
               <button
-                onClick={() => { setCreateModalOpen(true); toggleSidebar(); }}
+                onClick={() => navigate('/upload')}
                 className="w-12 h-12 bg-white/5 hover:bg-white/10 flex items-center justify-center rounded-full transition-colors text-zinc-400 hover:text-white"
-                title="Criar Playlist"
+                title="Enviar música"
               >
                 <Plus size={24} />
               </button>
