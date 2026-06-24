@@ -11,7 +11,7 @@ import {
   Shuffle, Repeat, Repeat1, MonitorSpeaker, ChevronUp
 } from 'lucide-react'
 import AddToPlaylistModal from './AddToPlaylistModal'
-import Lyrics from './Lyrics'
+import MobileLyrics from './MobileLyrics'
 import { api } from '../lib/api'
 import { shareLink } from '../lib/share'
 import { useDialogStore } from '../store/useDialogStore'
@@ -52,6 +52,12 @@ export default function Player({ isMobile = false }) {
   const [audioUrl, setAudioUrl] = useState('')
   const hasToken = !!token
   useEffect(() => {
+    // Para imediatamente o áudio antigo ao trocar de música, evitando que
+    // o efeito de play reinicie a faixa anterior (ex.: áudio "ended" volta ao 0)
+    // enquanto a nova URL ainda está sendo buscada.
+    const audio = audioRef.current
+    if (audio) { try { audio.pause(); audio.currentTime = 0 } catch {} }
+
     if (!currentSong) { setAudioUrl(''); return }
     if (!token) {
       // No token yet — use the direct URL so playback isn't blocked
@@ -148,7 +154,9 @@ export default function Player({ isMobile = false }) {
     return () => {
       if (fadeInterval.current) clearInterval(fadeInterval.current)
     }
-  }, [isPlaying, currentSong, volume, audioUrl])
+    // NÃO depende de currentSong: a reprodução é guiada por audioUrl (a URL já
+    // carregada da faixa atual), impedindo tocar a URL antiga durante a troca.
+  }, [isPlaying, volume, audioUrl])
 
   useEffect(() => {
     if (audioRef.current && isPlaying) {
@@ -530,7 +538,7 @@ function PlayerLyricsSection({ song, token }) {
   if (isVideoMode) {
     return <SyncedLyricVideo videoUrl={song.subtitle_video_url} token={token} />
   }
-  return <Lyrics centered />
+  return <MobileLyrics song={song} />
 }
 
 // Vídeo de legenda sincronizado ao áudio que está tocando (audioManager).
