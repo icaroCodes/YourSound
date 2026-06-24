@@ -15,6 +15,7 @@ import Profile from './pages/Profile'
 import Search from './pages/Search'
 import SongShare from './pages/SongShare'
 import Dialog from './components/Dialog'
+import OfflineBanner from './components/OfflineBanner'
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { session, userProfile, isLoading } = useAuthStore()
@@ -191,6 +192,7 @@ export default function App() {
 
   return (
     <>
+      <OfflineBanner />
       <Dialog />
       <Router>
         <Routes>

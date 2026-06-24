@@ -59,6 +59,12 @@ export default function Player({ isMobile = false }) {
     if (audio) { try { audio.pause(); audio.currentTime = 0 } catch {} }
 
     if (!currentSong) { setAudioUrl(''); return }
+    if (!navigator.onLine) {
+      // Offline: usa a URL pública direta (servida pelo cache do service worker).
+      // O endpoint /stream depende do backend e não responde sem internet.
+      setAudioUrl(currentSong.file_url || '')
+      return
+    }
     if (!token) {
       // No token yet — use the direct URL so playback isn't blocked
       setAudioUrl(currentSong.file_url || '')

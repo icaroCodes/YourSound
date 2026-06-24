@@ -6,6 +6,7 @@ import { useDialogStore } from '../store/useDialogStore'
 import { useOnboardingStore } from '../store/useOnboardingStore'
 import { supabase } from '../lib/supabase'
 import { api } from '../lib/api'
+import OfflineDownloader from '../components/OfflineDownloader'
 
 export default function Profile() {
   const navigate = useNavigate()
@@ -182,6 +183,9 @@ export default function Profile() {
           'Salvar alterações'
         )}
       </button>
+
+      {/* Offline */}
+      <OfflineDownloader />
 
       {/* Tutorial */}
       <div className="mt-10 pt-8 border-t border-zinc-900">
