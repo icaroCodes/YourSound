@@ -8,6 +8,7 @@ import CreatePlaylistModal from '../components/CreatePlaylistModal'
 import { useNavigate } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { useOnboardingStore } from '../store/useOnboardingStore'
+import { useDownloadedFilter, useOnlineStatus } from '../lib/offline'
 
 export default function Home() {
   const [songs, setSongs] = useState([])
@@ -21,6 +22,12 @@ export default function Home() {
   const { playSong, currentSong, isPlaying, togglePlay } = usePlayerStore()
   const { user, userProfile, signOut } = useAuthStore()
   const navigate = useNavigate()
+
+  // Offline: mostra só as músicas baixadas. Online: mostra tudo.
+  const online = useOnlineStatus()
+  const songsView = useDownloadedFilter(songs)
+  const recentView = useDownloadedFilter(recentSongs)
+  const recommendedView = useDownloadedFilter(recommendedSongs)
 
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth >= 1024)
@@ -248,11 +255,11 @@ export default function Home() {
         <div className="mb-10 overflow-hidden">
            <h2 className="text-[22px] font-black text-white mb-6">Tocadas recentemente</h2>
            <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar scroll-smooth">
-              {recentSongs.map(song => (
+              {recentView.map(song => (
                 <div
                   key={song.id}
                   className="shrink-0 w-[180px] cursor-pointer group"
-                  onClick={() => currentSong?.id === song.id ? togglePlay() : playSong(song, songs)}
+                  onClick={() => currentSong?.id === song.id ? togglePlay() : playSong(song, songsView)}
                 >
                   <div className="relative aspect-square rounded-[8px] overflow-hidden mb-3 bg-[#1d1d1d] shadow-lg">
                     {song.cover_url ? (
@@ -278,11 +285,11 @@ export default function Home() {
         <section className="mb-10 overflow-hidden">
            <h2 className="text-[22px] font-black text-white mb-6">Suas músicas estão com saudade</h2>
            <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar scroll-smooth">
-              {(recommendedSongs.length > 0 ? recommendedSongs : recentSongs).map(song => (
+              {(recommendedView.length > 0 ? recommendedView : recentView).map(song => (
                 <div
                   key={song.id}
                   className="shrink-0 w-[180px] cursor-pointer group"
-                  onClick={() => currentSong?.id === song.id ? togglePlay() : playSong(song, songs)}
+                  onClick={() => currentSong?.id === song.id ? togglePlay() : playSong(song, songsView)}
                 >
                   <div className="aspect-square rounded-[8px] overflow-hidden mb-3 bg-[#1d1d1d] shadow-lg">
                     {song.cover_url ? (
@@ -301,11 +308,11 @@ export default function Home() {
         <section className="mb-10">
            <h2 className="text-[22px] font-black text-white mb-6">Álbuns com as músicas que você adora</h2>
            <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar scroll-smooth">
-              {songs.map(song => (
+              {songsView.map(song => (
                 <div 
                   key={song.id} 
                   className="shrink-0 w-[140px] cursor-pointer"
-                  onClick={() => currentSong?.id === song.id ? togglePlay() : playSong(song, songs)}
+                  onClick={() => currentSong?.id === song.id ? togglePlay() : playSong(song, songsView)}
                 >
                   <div className="aspect-square rounded-[4px] overflow-hidden mb-2 bg-[#282828] shadow-lg">
                     {song.cover_url ? <img src={song.cover_url} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex items-center justify-center text-zinc-600 text-2xl">&#9835;</div>}
@@ -325,16 +332,16 @@ export default function Home() {
         </div>
 
         {/* Recent Grid */}
-        {recentSongs.length > 0 && (
+        {recentView.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {recentSongs.map(song => {
+            {recentView.map(song => {
               const isActive = currentSong?.id === song.id
               const playing = isActive && isPlaying
               return (
                 <div
                   key={song.id}
                   className={`group flex items-center rounded overflow-hidden transition-colors cursor-pointer pr-4 ${isActive ? 'bg-white/10' : 'bg-white/4 hover:bg-white/10'}`}
-                  onClick={() => isActive ? togglePlay() : playSong(song, songs)}
+                  onClick={() => isActive ? togglePlay() : playSong(song, songsView)}
                 >
                   <div className="relative w-16 h-16 shrink-0 bg-zinc-800 shadow">
                     {song.cover_url ? (
@@ -351,7 +358,7 @@ export default function Home() {
                   </div>
                   <button
                     className="w-10 h-10 bg-spotify-green text-black rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 hover:scale-105 transition-all shrink-0"
-                    onClick={(e) => { e.stopPropagation(); isActive ? togglePlay() : playSong(song, songs) }}
+                    onClick={(e) => { e.stopPropagation(); isActive ? togglePlay() : playSong(song, songsView) }}
                   >
                     {playing
                       ? <Pause fill="currentColor" size={18} />
@@ -372,20 +379,20 @@ export default function Home() {
             <button className="text-sm font-bold text-zinc-400 hover:underline">Mostrar tudo</button>
           </div>
 
-          {songs.length === 0 ? (
+          {songsView.length === 0 ? (
             <div className="text-zinc-500 py-10 px-4 border border-dashed border-white/10 rounded-lg text-center">
-              Você ainda não enviou músicas.
+              {online ? 'Você ainda não enviou músicas.' : 'Nenhuma música baixada para ouvir offline.'}
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-              {(recommendedSongs.length > 0 ? recommendedSongs : recentSongs).map((song) => {
+              {(recommendedView.length > 0 ? recommendedView : recentView).map((song) => {
                 const isActive = currentSong?.id === song.id
                 const playing = isActive && isPlaying
                 return (
                   <div
                     key={song.id}
                     className={`group p-4 rounded-lg transition duration-300 flex flex-col cursor-pointer ${isActive ? 'bg-white/8' : 'bg-white/3 hover:bg-white/8'}`}
-                    onClick={() => isActive ? togglePlay() : playSong(song, songs)}
+                    onClick={() => isActive ? togglePlay() : playSong(song, songsView)}
                   >
                     <div className="relative aspect-square rounded-md overflow-hidden mb-4 shadow-xl bg-zinc-800">
                       {song.cover_url ? (
@@ -402,7 +409,7 @@ export default function Home() {
                       )}
                       <button
                         className="absolute bottom-2 right-2 w-12 h-12 bg-spotify-green text-black rounded-full flex items-center justify-center shadow-xl transform translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 hover:scale-105 hover:bg-spotify-green-hover"
-                        onClick={(e) => { e.stopPropagation(); isActive ? togglePlay() : playSong(song, songs) }}
+                        onClick={(e) => { e.stopPropagation(); isActive ? togglePlay() : playSong(song, songsView) }}
                       >
                         {playing
                           ? <Pause fill="currentColor" size={22} />

@@ -1,65 +1,25 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Download, Check, HardDrive } from 'lucide-react'
 import { api } from '../lib/api'
 import {
-  collectMediaUrls,
-  prefetchMedia,
-  getStorageEstimate,
+  useOfflineDownload,
   useOnlineStatus,
+  getStorageEstimate,
 } from '../lib/offline'
 
 /**
- * Botão para baixar todo o catálogo (áudios, capas e vídeos de legenda)
- * para o aparelho, permitindo tocar tudo sem internet depois.
+ * Baixa todo o catálogo (áudios, capas e vídeos de legenda) para o aparelho,
+ * permitindo tocar tudo sem internet depois.
  */
 export default function OfflineDownloader() {
   const online = useOnlineStatus()
-  const [state, setState] = useState('idle') // idle | working | done | error
-  const [progress, setProgress] = useState({ done: 0, total: 0 })
-  const [message, setMessage] = useState('')
+  const { state, progress, message, start } = useOfflineDownload()
   const [usage, setUsage] = useState(null)
 
-  const handleDownload = async () => {
-    if (!online) {
-      setState('error')
-      setMessage('Você precisa de internet para baixar o catálogo.')
-      return
-    }
-    setState('working')
-    setMessage('')
-    setProgress({ done: 0, total: 0 })
-
-    try {
-      // Busca o catálogo completo (e as músicas das playlists já entram aqui).
-      const songs = await api.getSongs()
-      const urls = collectMediaUrls(songs)
-
-      if (urls.length === 0) {
-        setState('done')
-        setMessage('Nenhuma música disponível para baixar ainda.')
-        return
-      }
-
-      setProgress({ done: 0, total: urls.length })
-      const { ok, failed } = await prefetchMedia(urls, {
-        concurrency: 4,
-        onProgress: (done, total) => setProgress({ done, total }),
-      })
-
-      const est = await getStorageEstimate()
-      if (est) setUsage(est)
-
-      setState('done')
-      setMessage(
-        failed > 0
-          ? `${ok} itens salvos. ${failed} falharam (tente de novo).`
-          : `Tudo pronto! ${ok} itens disponíveis offline.`
-      )
-    } catch (err) {
-      setState('error')
-      setMessage(err.message || 'Falha ao baixar o catálogo.')
-    }
-  }
+  // Atualiza o espaço usado quando termina.
+  useEffect(() => {
+    if (state === 'done') getStorageEstimate().then(setUsage)
+  }, [state])
 
   const pct =
     progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0
@@ -75,8 +35,8 @@ export default function OfflineDownloader() {
       </p>
 
       <button
-        onClick={handleDownload}
-        disabled={state === 'working'}
+        onClick={() => start(() => api.getSongs())}
+        disabled={state === 'working' || !online}
         className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-spotify-green text-black text-sm font-bold hover:opacity-90 transition disabled:opacity-60"
       >
         {state === 'working' ? (
@@ -118,6 +78,12 @@ export default function OfflineDownloader() {
           }`}
         >
           {message}
+        </p>
+      )}
+
+      {!online && state !== 'working' && (
+        <p className="mt-2 text-xs text-amber-500">
+          Conecte-se à internet para baixar.
         </p>
       )}
 

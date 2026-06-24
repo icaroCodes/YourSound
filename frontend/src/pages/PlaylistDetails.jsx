@@ -15,6 +15,8 @@ import { useOnboardingStore } from '../store/useOnboardingStore'
 import PlayingBars from '../components/PlayingBars'
 import { useDominantColor } from '../hooks/useDominantColor'
 import AddToPlaylistModal from '../components/AddToPlaylistModal'
+import PlaylistOfflineButton from '../components/PlaylistOfflineButton'
+import { useDownloadedFilter, useOnlineStatus } from '../lib/offline'
 import {
   DndContext,
   closestCenter,
@@ -307,6 +309,10 @@ export default function PlaylistDetails() {
   const [error, setError] = useState(null)
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024)
 
+  // Offline: na playlist aparecem só as faixas baixadas. Online: todas.
+  const online = useOnlineStatus()
+  const visibleSongs = useDownloadedFilter(songs)
+
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth >= 1024)
     window.addEventListener('resize', handleResize)
@@ -574,21 +580,21 @@ export default function PlaylistDetails() {
     }
   }
 
-  const isPlaylistActive = songs.length > 0 && songs.some(s => s.id === currentSong?.id)
+  const isPlaylistActive = visibleSongs.length > 0 && visibleSongs.some(s => s.id === currentSong?.id)
   const isPlaylistPlaying = isPlaylistActive && isPlaying
 
   const handlePlayAll = () => {
-    if (songs.length === 0) return
+    if (visibleSongs.length === 0) return
     if (isPlaylistActive) {
       togglePlay()
     } else {
-      playSong(songs[0], songs)
+      playSong(visibleSongs[0], visibleSongs)
     }
   }
 
   const handleRowClick = (song) => {
     if (currentSong?.id === song.id) togglePlay()
-    else playSong(song, songs)
+    else playSong(song, visibleSongs)
   }
 
   // ── Formatters ──
@@ -787,12 +793,14 @@ export default function PlaylistDetails() {
         {/* Action Bar Mobile */}
         <div className="px-6 py-4 flex items-center justify-between sticky top-0 bg-black/95 backdrop-blur-md z-10 transition-colors">
            <div className="flex items-center gap-7">
-              <button 
+              <button
                 className="text-spotify-green transition-transform active:scale-125"
               >
                 <Heart size={30} className="fill-spotify-green text-spotify-green" />
               </button>
-              
+
+              {songs.length > 0 && <PlaylistOfflineButton songs={songs} size={28} />}
+
               <div className="relative" ref={menuRef}>
                 <button 
                   className="text-zinc-400 active:scale-110 transition-transform" 
@@ -843,10 +851,14 @@ export default function PlaylistDetails() {
 
         {/* Mobile Tracks List */}
         <div className="px-4 space-y-1 mt-4">
-           {songs.length === 0 ? (
+           {visibleSongs.length === 0 ? (
              <div className="text-zinc-500 py-16 text-center border border-dashed border-white/5 rounded-lg">
-               <p className="text-base mb-2">Esta playlist está vazia.</p>
-               {isOwner && (
+               <p className="text-base mb-2">
+                 {!online && songs.length > 0
+                   ? 'Nenhuma faixa desta playlist foi baixada para offline.'
+                   : 'Esta playlist está vazia.'}
+               </p>
+               {isOwner && online && (
                  <button onClick={() => openSearch()} className="text-white font-semibold hover:underline">
                    Pesquise e adicione músicas
                  </button>
@@ -860,10 +872,10 @@ export default function PlaylistDetails() {
                onDragEnd={handleDragEnd}
              >
                <SortableContext
-                 items={songs.map(s => s.playlist_song_id)}
+                 items={visibleSongs.map(s => s.playlist_song_id)}
                  strategy={verticalListSortingStrategy}
                >
-                 {songs.map((song) => (
+                 {visibleSongs.map((song) => (
                    <SortableMobileSongRow
                      key={song.playlist_song_id}
                      song={song}
@@ -879,7 +891,7 @@ export default function PlaylistDetails() {
                </SortableContext>
                <DragOverlay>
                  {activeId ? (() => {
-                   const song = songs.find(s => s.playlist_song_id === activeId)
+                   const song = visibleSongs.find(s => s.playlist_song_id === activeId)
                    if (!song) return null
                    return (
                      <div className="flex items-center gap-3 p-2 bg-[#282828] rounded-md shadow-2xl opacity-95 border border-white/10">
@@ -1130,13 +1142,15 @@ export default function PlaylistDetails() {
           {/* Play */}
           <button
             onClick={handlePlayAll}
-            disabled={songs.length === 0}
+            disabled={visibleSongs.length === 0}
             className="w-14 h-14 bg-spotify-green rounded-full flex items-center justify-center hover:scale-105 hover:bg-spotify-green-hover transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100"
           >
             {isPlaylistPlaying
               ? <Pause fill="black" stroke="none" size={24} />
               : <Play fill="black" stroke="none" size={24} className="ml-0.5" />}
           </button>
+
+          {songs.length > 0 && <PlaylistOfflineButton songs={songs} size={22} />}
 
           {/* ─── More Menu (Edit / Delete) ─── */}
           {isOwner && (
@@ -1301,10 +1315,14 @@ export default function PlaylistDetails() {
 
       {/* ─── Song Table ─── */}
       <div className="px-6">
-        {songs.length === 0 ? (
+        {visibleSongs.length === 0 ? (
           <div className="text-zinc-500 py-16 text-center border border-dashed border-white/5 rounded-lg">
-            <p className="text-base mb-2">Esta playlist está vazia.</p>
-            {isOwner && (
+            <p className="text-base mb-2">
+              {!online && songs.length > 0
+                ? 'Nenhuma faixa desta playlist foi baixada para offline.'
+                : 'Esta playlist está vazia.'}
+            </p>
+            {isOwner && online && (
               <button onClick={() => openSearch()} className="text-white font-semibold hover:underline">
                 Pesquise e adicione músicas
               </button>
@@ -1331,10 +1349,10 @@ export default function PlaylistDetails() {
               onDragEnd={handleDragEnd}
             >
               <SortableContext
-                items={songs.map(s => s.playlist_song_id)}
+                items={visibleSongs.map(s => s.playlist_song_id)}
                 strategy={verticalListSortingStrategy}
               >
-                {songs.map((song, idx) => (
+                {visibleSongs.map((song, idx) => (
                   <SortableSongRow
                     key={song.playlist_song_id}
                     song={song}
@@ -1356,7 +1374,7 @@ export default function PlaylistDetails() {
               {/* Drag overlay — ghost card while dragging */}
               <DragOverlay>
                 {activeId ? (() => {
-                  const song = songs.find(s => s.playlist_song_id === activeId)
+                  const song = visibleSongs.find(s => s.playlist_song_id === activeId)
                   if (!song) return null
                   return (
                     <div className="flex items-center gap-3 px-4 py-2 bg-[#3e3e3e] rounded-md shadow-2xl border border-white/10 opacity-95">

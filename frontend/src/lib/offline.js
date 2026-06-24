@@ -1,4 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import {
+  collectMediaUrls,
+  prefetchMedia,
+  getStorageEstimate,
+  filterDownloadedSongs,
+} from './offlineCore'
+
+// Reexporta utilitários puros para quem importa de 'offline'.
+export {
+  collectMediaUrls,
+  prefetchMedia,
+  getStorageEstimate,
+  isUrlCached,
+  getCachedUrlSet,
+  filterDownloadedSongs,
+} from './offlineCore'
 
 /**
  * Hook: estado de conexão (online/offline) em tempo real.
@@ -20,71 +36,99 @@ export function useOnlineStatus() {
   return online
 }
 
-// Só pré-baixamos URLs públicas e estáveis do Supabase Storage.
-function isCacheableMediaUrl(url) {
-  return typeof url === 'string' && url.includes('/storage/v1/object/public/')
-}
-
 /**
- * Coleta todas as URLs de mídia (áudio, capa, vídeo de legenda) de uma
- * lista de músicas que podem ser guardadas offline.
+ * Hook: quando ONLINE, retorna a lista completa de músicas.
+ * Quando OFFLINE, retorna só as que estão baixadas (áudio em cache).
+ *
+ * Útil para o catálogo/busca/playlists mostrarem apenas o que dá para
+ * tocar sem internet.
  */
-export function collectMediaUrls(songs) {
-  const urls = new Set()
-  for (const s of songs || []) {
-    if (isCacheableMediaUrl(s.file_url)) urls.add(s.file_url)
-    if (isCacheableMediaUrl(s.cover_url)) urls.add(s.cover_url)
-    if (s.subtitle_mode === 'video' && isCacheableMediaUrl(s.subtitle_video_url)) {
-      urls.add(s.subtitle_video_url)
+export function useDownloadedFilter(songs) {
+  const online = useOnlineStatus()
+  const [filtered, setFiltered] = useState([])
+
+  useEffect(() => {
+    let active = true
+    if (online) {
+      setFiltered(songs || [])
+      return
     }
-  }
-  return [...urls]
+    filterDownloadedSongs(songs).then((r) => {
+      if (active) setFiltered(r)
+    })
+    return () => {
+      active = false
+    }
+  }, [songs, online])
+
+  return online ? songs || [] : filtered
 }
 
 /**
- * Faz o download das mídias para o cache do service worker, em paralelo
- * limitado. Chama onProgress(feito, total) a cada item.
- * Retorna { ok, failed }.
+ * Hook reutilizável para baixar músicas para offline.
+ *
+ * start(songsOrFetcher) aceita:
+ *   - um array de músicas, ou
+ *   - uma função async que retorna esse array (ex.: () => api.getSongs())
+ *
+ * Retorna { state, progress, message, start, reset }.
+ *   state: 'idle' | 'working' | 'done' | 'error'
  */
-export async function prefetchMedia(urls, { concurrency = 4, onProgress } = {}) {
-  let done = 0
-  let ok = 0
-  let failed = 0
-  const queue = [...urls]
-  const total = queue.length
+export function useOfflineDownload() {
+  const [state, setState] = useState('idle')
+  const [progress, setProgress] = useState({ done: 0, total: 0 })
+  const [message, setMessage] = useState('')
+  const runningRef = useRef(false)
 
-  async function worker() {
-    while (queue.length) {
-      const url = queue.shift()
-      try {
-        // O fetch é interceptado pelo service worker (CacheFirst) e guardado.
-        const res = await fetch(url, { mode: 'cors', credentials: 'omit' })
-        if (res.ok || res.type === 'opaque') ok++
-        else failed++
-      } catch {
-        failed++
-      } finally {
-        done++
-        onProgress?.(done, total)
+  const reset = useCallback(() => {
+    setState('idle')
+    setProgress({ done: 0, total: 0 })
+    setMessage('')
+  }, [])
+
+  const start = useCallback(async (songsOrFetcher) => {
+    if (runningRef.current) return
+    if (!navigator.onLine) {
+      setState('error')
+      setMessage('Você precisa de internet para baixar.')
+      return
+    }
+    runningRef.current = true
+    setState('working')
+    setMessage('')
+    setProgress({ done: 0, total: 0 })
+
+    try {
+      const songs =
+        typeof songsOrFetcher === 'function'
+          ? await songsOrFetcher()
+          : songsOrFetcher
+      const urls = collectMediaUrls(songs)
+
+      if (urls.length === 0) {
+        setState('done')
+        setMessage('Nada para baixar ainda.')
+        return
       }
-    }
-  }
 
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, total || 1) }, worker)
-  )
-  return { ok, failed, total }
-}
+      setProgress({ done: 0, total: urls.length })
+      const { ok, failed } = await prefetchMedia(urls, {
+        onProgress: (done, total) => setProgress({ done, total }),
+      })
 
-/**
- * Estima quanto espaço o app já usa no aparelho (MB).
- */
-export async function getStorageEstimate() {
-  try {
-    if (navigator.storage?.estimate) {
-      const { usage = 0, quota = 0 } = await navigator.storage.estimate()
-      return { usageMB: usage / 1048576, quotaMB: quota / 1048576 }
+      setState('done')
+      setMessage(
+        failed > 0
+          ? `${ok} prontos, ${failed} falharam. Toque de novo para tentar os que faltam.`
+          : `Tudo pronto! ${ok} itens disponíveis offline.`
+      )
+    } catch (err) {
+      setState('error')
+      setMessage(err?.message || 'Falha ao baixar.')
+    } finally {
+      runningRef.current = false
     }
-  } catch {}
-  return null
+  }, [])
+
+  return { state, progress, message, start, reset }
 }

@@ -6,11 +6,13 @@ import { useLikeStore } from '../store/useLikeStore'
 import { useOnboardingStore } from '../store/useOnboardingStore'
 import PlayingBars from '../components/PlayingBars'
 import AddToPlaylistModal from '../components/AddToPlaylistModal'
+import { useOnlineStatus, filterDownloadedSongs } from '../lib/offline'
 
 export default function Search() {
   const [songs, setSongs] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const online = useOnlineStatus()
   const { playSong, currentSong, isPlaying, togglePlay } = usePlayerStore()
   const { isLiked, toggleLike } = useLikeStore()
   const [playlistModalSong, setPlaylistModalSong] = useState(null)
@@ -20,8 +22,25 @@ export default function Search() {
     const timer = setTimeout(async () => {
       setLoading(true)
       try {
-        const results = await api.searchSongs(searchQuery)
-        setSongs(results)
+        if (online) {
+          const results = await api.searchSongs(searchQuery)
+          setSongs(results)
+        } else {
+          // Offline: usa o catálogo já em cache, mas mostra SÓ as baixadas,
+          // e faz a busca localmente (sem depender do servidor).
+          const all = await api.getSongs().catch(() => [])
+          const downloaded = await filterDownloadedSongs(all)
+          const q = searchQuery.trim().toLowerCase()
+          setSongs(
+            q
+              ? downloaded.filter(
+                  (s) =>
+                    s.title?.toLowerCase().includes(q) ||
+                    s.artist?.toLowerCase().includes(q)
+                )
+              : downloaded
+          )
+        }
       } catch (err) {
         console.error('Search error:', err)
       } finally {
@@ -30,7 +49,7 @@ export default function Search() {
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [searchQuery])
+  }, [searchQuery, online])
 
   const handleSearch = (e) => {
     setSearchQuery(e.target.value)
@@ -75,7 +94,11 @@ export default function Search() {
 
       {/* Results / All Songs Label */}
       <h2 className="text-xl font-black mb-6">
-        {searchQuery ? 'Resultados' : 'Navegar por todas as músicas'}
+        {searchQuery
+          ? 'Resultados'
+          : online
+          ? 'Navegar por todas as músicas'
+          : 'Músicas baixadas'}
       </h2>
 
       {/* Songs Grid / List */}
@@ -85,7 +108,13 @@ export default function Search() {
         ) : songs.length === 0 ? (
           <div className="py-20 text-center flex flex-col items-center gap-4">
             <Music size={48} className="text-zinc-800" />
-            <p className="text-zinc-500">Nenhum resultado para "{searchQuery}"</p>
+            <p className="text-zinc-500">
+              {!online
+                ? searchQuery
+                  ? `Nenhuma música baixada para "${searchQuery}"`
+                  : 'Você ainda não baixou nenhuma música para ouvir offline.'
+                : `Nenhum resultado para "${searchQuery}"`}
+            </p>
           </div>
         ) : (
           songs.map((song, index) => {

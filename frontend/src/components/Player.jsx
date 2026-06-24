@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import AddToPlaylistModal from './AddToPlaylistModal'
 import MobileLyrics from './MobileLyrics'
+import SongOfflineButton from './SongOfflineButton'
 import { api } from '../lib/api'
 import { shareLink } from '../lib/share'
 import { useDialogStore } from '../store/useDialogStore'
@@ -431,6 +432,7 @@ export default function Player({ isMobile = false }) {
             <div className="flex items-center justify-between shrink-0">
                <button className="text-white/70 hover:text-white transition"><MonitorSpeaker size={19} /></button>
                <div className="flex items-center gap-5">
+                  <SongOfflineButton song={currentSong} size={19} />
                   <button onClick={handleShareSong} disabled={sharingSong} className="text-white/70 hover:text-white transition disabled:opacity-50"><Share2 size={19} /></button>
                   <button
                     onClick={() => { toggleQueue(); setIsMobileFullScreen(false) }}
@@ -510,6 +512,7 @@ export default function Player({ isMobile = false }) {
       {/* Right: Volume & Tools */}
       <div className="w-[30%] min-w-[180px] flex items-center justify-end gap-3.5 text-[#b3b3b3]">
         <button onClick={toggleLyrics} className={`transition hidden md:block ${isLyricsOpen ? 'text-spotify-green' : 'hover:text-white'}`}><Mic2 size={16} strokeWidth={1.5} /></button>
+        <SongOfflineButton song={currentSong} size={16} className="hidden md:flex" />
         <button onClick={toggleQueue} className={`transition hidden md:block ${isQueueOpen ? 'text-spotify-green' : 'hover:text-white'}`}><ListMusic size={16} strokeWidth={1.5} /></button>
         <div className="flex items-center gap-2 w-[100px] group relative h-4">
           <button onClick={() => volume === 0 ? setVolume(previousVolume || 1) : (setPreviousVolume(volume), setVolume(0))} className="hover:text-white transition z-20">{volume === 0 ? <VolumeX size={16} strokeWidth={1.5} /> : <Volume2 size={16} strokeWidth={1.5} />}</button>
