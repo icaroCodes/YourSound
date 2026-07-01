@@ -82,6 +82,8 @@ export const usePlayerStore = create((set, get) => ({
     }))
   },
 
+  setRepeatMode: (mode) => set({ repeatMode: mode }),
+
   previous: () => {
     const { currentSong, queue } = get()
     if (!currentSong || queue.length === 0) return

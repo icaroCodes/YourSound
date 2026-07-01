@@ -8,7 +8,7 @@ import { api } from '../lib/api'
 import {
   Play, Pause, Shuffle, UserPlus, MoreHorizontal,
   Clock, Search, Plus, Trash2, ListMusic, List, Heart, Camera,
-  Pencil, X, Check, Globe, Lock, GripVertical, ArrowLeft, Download, Share2
+  Pencil, X, Check, Globe, Lock, GripVertical, ArrowLeft, Download, Share2, Repeat
 } from 'lucide-react'
 import { useLikeStore } from '../store/useLikeStore'
 import { useOnboardingStore } from '../store/useOnboardingStore'
@@ -298,7 +298,7 @@ export default function PlaylistDetails() {
   const shareToken = searchParams.get('share')
   const { user, userProfile } = useAuthStore()
   const { showAlert } = useDialogStore()
-  const { playSong, currentSong, isPlaying, togglePlay, updateQueue } = usePlayerStore()
+  const { playSong, currentSong, isPlaying, togglePlay, updateQueue, setRepeatMode } = usePlayerStore()
   const { isLiked, toggleLike } = useLikeStore()
   const [playlistModalSong, setPlaylistModalSong] = useState(null)
   const [sharing, setSharing] = useState(false)
@@ -312,6 +312,29 @@ export default function PlaylistDetails() {
   // Offline: na playlist aparecem só as faixas baixadas. Online: todas.
   const online = useOnlineStatus()
   const visibleSongs = useDownloadedFilter(songs)
+
+  // Loop da playlist (salvo no banco em playlists.loop_enabled).
+  // Ao terminar a última faixa, volta para a primeira.
+  const [savingLoop, setSavingLoop] = useState(false)
+  const playlistLoop = !!playlist?.loop_enabled
+  const togglePlaylistLoop = async () => {
+    if (savingLoop || !playlist) return
+    const nextVal = !playlistLoop
+    // Otimista: reflete na hora e aplica no player.
+    setPlaylist(p => ({ ...p, loop_enabled: nextVal }))
+    setRepeatMode(nextVal ? 'all' : 'off')
+    setSavingLoop(true)
+    try {
+      await api.updatePlaylist(id, { loop_enabled: nextVal })
+    } catch (err) {
+      // Reverte em caso de falha.
+      setPlaylist(p => ({ ...p, loop_enabled: !nextVal }))
+      setRepeatMode(!nextVal ? 'all' : 'off')
+      showAlert('Não foi possível salvar a repetição. Tente de novo.', { title: 'Erro', icon: 'error' })
+    } finally {
+      setSavingLoop(false)
+    }
+  }
 
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth >= 1024)
@@ -405,6 +428,8 @@ export default function PlaylistDetails() {
       const data = await api.getPlaylist(id, shareToken)
       setPlaylist(data.playlist)
       setSongs(data.songs) // order comes from the DB (position column)
+      // Aplica a repetição salva desta playlist no player.
+      setRepeatMode(data.playlist?.loop_enabled ? 'all' : 'off')
     } catch (err) {
       setError(err.message || 'Erro ao carregar playlist.')
     } finally {
@@ -801,6 +826,17 @@ export default function PlaylistDetails() {
 
               {songs.length > 0 && <PlaylistOfflineButton songs={songs} size={28} />}
 
+              <button
+                onClick={togglePlaylistLoop}
+                disabled={savingLoop}
+                title={playlistLoop ? 'Repetir playlist: ativado' : 'Repetir playlist'}
+                aria-pressed={playlistLoop}
+                className={`relative transition-transform active:scale-110 disabled:opacity-60 ${playlistLoop ? 'text-spotify-green' : 'text-zinc-400'}`}
+              >
+                <Repeat size={26} />
+                {playlistLoop && <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-spotify-green" />}
+              </button>
+
               <div className="relative" ref={menuRef}>
                 <button 
                   className="text-zinc-400 active:scale-110 transition-transform" 
@@ -1151,6 +1187,17 @@ export default function PlaylistDetails() {
           </button>
 
           {songs.length > 0 && <PlaylistOfflineButton songs={songs} size={22} />}
+
+          <button
+            onClick={togglePlaylistLoop}
+            disabled={savingLoop}
+            title={playlistLoop ? 'Repetir playlist: ativado' : 'Repetir playlist'}
+            aria-pressed={playlistLoop}
+            className={`relative transition-transform hover:scale-105 disabled:opacity-60 ${playlistLoop ? 'text-spotify-green' : 'text-zinc-400 hover:text-white'}`}
+          >
+            <Repeat size={20} />
+            {playlistLoop && <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-spotify-green" />}
+          </button>
 
           {/* ─── More Menu (Edit / Delete) ─── */}
           {isOwner && (

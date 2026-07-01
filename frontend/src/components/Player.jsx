@@ -573,14 +573,23 @@ function SyncedLyricVideo({ videoUrl, token }) {
     const audio = audioManager.element
     if (!audio) return
 
-    const onSeek = () => { if (videoRef.current) videoRef.current.currentTime = audio.currentTime }
-    const onPlay = () => { if (videoRef.current) { videoRef.current.currentTime = audio.currentTime; videoRef.current.play().catch(() => {}) } }
+    // Se o vídeo for mais curto que a música, ele se repete: o tempo-alvo é
+    // o tempo do áudio "dobrado" pela duração do vídeo (audioTime % videoDuration).
+    // Assim o vídeo dá loop até a música terminar.
+    const wrap = (t) => {
+      const d = videoRef.current?.duration
+      return d && isFinite(d) && d > 0 ? t % d : t
+    }
+
+    const onSeek = () => { if (videoRef.current) videoRef.current.currentTime = wrap(audio.currentTime) }
+    const onPlay = () => { if (videoRef.current) { videoRef.current.currentTime = wrap(audio.currentTime); videoRef.current.play().catch(() => {}) } }
     const onPause = () => { if (videoRef.current) videoRef.current.pause() }
 
     const loop = () => {
       const v = videoRef.current
       if (v && audio) {
-        if (Math.abs(audio.currentTime - v.currentTime) > 0.15 && v.readyState >= 2) v.currentTime = audio.currentTime
+        const target = wrap(audio.currentTime)
+        if (Math.abs(target - v.currentTime) > 0.15 && v.readyState >= 2) v.currentTime = target
         if (!audio.paused && v.paused && v.readyState >= 2) v.play().catch(() => {})
         if (audio.paused && !v.paused) v.pause()
       }
@@ -619,6 +628,7 @@ function SyncedLyricVideo({ videoUrl, token }) {
           ref={videoRef}
           src={src}
           muted
+          loop
           playsInline
           preload="auto"
           className="w-full h-full object-contain transition-opacity duration-500"

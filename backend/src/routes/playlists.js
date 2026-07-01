@@ -177,6 +177,9 @@ router.patch('/:id', verifyAuth, async (req, res) => {
     if (req.body.is_public !== undefined) {
       updates.is_public = !!req.body.is_public;
     }
+    if (req.body.loop_enabled !== undefined) {
+      updates.loop_enabled = !!req.body.loop_enabled;
+    }
     if (req.body.color !== undefined) {
       // null/empty => limpa a cor (volta para a cor dominante da capa).
       // Caso contrário exige um hex válido (#RGB ou #RRGGBB).
