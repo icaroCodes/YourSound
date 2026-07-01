@@ -83,8 +83,12 @@ function validateMediaUrl(url) {
 //  - user-agent realista de navegador
 //  - geo-bypass
 //  - retries + fragment-retries para resiliência de rede
-//  - extractor-args para usar o client "android"/"web" do YouTube
-//    (mais tolerante a anti-bot que o default)
+//  - extractor-args com clients atuais do YouTube (tv/web_safari/mweb)
+//    O client "android" foi descontinuado e hoje exige "PO token" — sem ele
+//    o YouTube devolve erro. Os clients abaixo ainda funcionam sem token e
+//    o yt-dlp tenta cada um em ordem até um responder.
+const YT_PLAYER_CLIENTS = 'tv,web_safari,mweb,web';
+
 function buildYtdlpArgs(url, isYoutube, kind) {
   const args = [
     '--force-ipv4',
@@ -111,7 +115,7 @@ function buildYtdlpArgs(url, isYoutube, kind) {
   args.push('-o', '-'); // stdout
 
   if (isYoutube) {
-    args.push('--extractor-args', 'youtube:player_client=android,web');
+    args.push('--extractor-args', `youtube:player_client=${YT_PLAYER_CLIENTS}`);
   }
 
   args.push('--', url);
