@@ -16,7 +16,7 @@
  */
 import { precacheAndRoute, createHandlerBoundToURL } from 'workbox-precaching'
 import { registerRoute, NavigationRoute } from 'workbox-routing'
-import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies'
+import { CacheFirst, CacheOnly, NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies'
 import { ExpirationPlugin } from 'workbox-expiration'
 import { CacheableResponsePlugin } from 'workbox-cacheable-response'
 import { RangeRequestsPlugin } from 'workbox-range-requests'
@@ -35,21 +35,37 @@ registerRoute(
 )
 
 // ── Mídia do Supabase Storage (áudio, capa, vídeo de legenda) ──
-// Suporta Range (seek) e guarda offline por até 60 dias.
+// IMPORTANTE: NÃO usar CacheFirst aqui. Com CacheFirst + RangeRequestsPlugin,
+// um arquivo ainda não cacheado é baixado INTEIRO (o Range é removido) antes de
+// o navegador poder tocar/dar seek — o que trava a reprodução até o download
+// terminar. Em músicas grandes isso "demora muito" e no vídeo de legenda
+// (até 50MB) costuma estourar timeout → "Vídeo indisponível".
+//
+// Estratégia correta: só servimos do cache o que JÁ foi baixado explicitamente
+// para offline (offlineCore.js grava via cache.put, sem depender deste SW).
+// Se não estiver no cache, deixamos o pedido ir DIRETO para a rede, onde o
+// navegador faz streaming progressivo com suporte nativo a Range (rápido).
+const mediaFromCache = new CacheOnly({
+  cacheName: 'ys-media',
+  plugins: [
+    new CacheableResponsePlugin({ statuses: [0, 200, 206] }),
+    new RangeRequestsPlugin(),
+  ],
+})
+
 registerRoute(
   ({ url }) => url.pathname.includes('/storage/v1/object/'),
-  new CacheFirst({
-    cacheName: 'ys-media',
-    plugins: [
-      new CacheableResponsePlugin({ statuses: [0, 200, 206] }),
-      new RangeRequestsPlugin(),
-      new ExpirationPlugin({
-        maxEntries: 600,
-        maxAgeSeconds: 60 * 24 * 60 * 60, // 60 dias
-        purgeOnQuotaError: true,
-      }),
-    ],
-  })
+  async (params) => {
+    // Já baixado offline? Serve do cache (com suporte a Range/seek).
+    try {
+      const cached = await mediaFromCache.handle(params)
+      if (cached) return cached
+    } catch {
+      // CacheOnly lança quando não há match — segue para a rede.
+    }
+    // Não cacheado → streaming direto do Supabase (Range nativo, sem travar).
+    return fetch(params.request)
+  }
 )
 
 // ── API: catálogo / playlists / likes (somente GET) ──
